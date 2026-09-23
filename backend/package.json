@@ -1,0 +1,36 @@
+{
+  "name": "my-oxygen-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "tsc",
+    "test": "bun test --timeout 15000",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:seed": "bun run src/db/seed.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "@hono/zod-validator": "^0.4.3",
+    "bcryptjs": "^3.0.2",
+    "drizzle-orm": "^0.39.3",
+    "drizzle-zod": "^0.7.0",
+    "hono": "^4.7.2",
+    "jose": "^5.9.6",
+    "node-cron": "^3.0.3",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.13.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/bun": "latest",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.11",
+    "drizzle-kit": "^0.30.4",
+    "typescript": "^5.7.3"
+  }
+}
