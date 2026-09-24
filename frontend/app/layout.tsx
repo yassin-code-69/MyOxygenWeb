@@ -8,7 +8,7 @@ import {
   mantineHtmlProps,
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { Poppins, Inter } from "next/font/google";
+import { Poppins, Inter, Caveat } from "next/font/google";
 import { theme } from "../theme";
 import { PageProgressBar } from "../components/PageProgressBar";
 import { MobileBottomNav } from "../components/MobileBottomNav";
@@ -26,6 +26,13 @@ const inter = Inter({
   display: "swap",
 });
 
+const caveat = Caveat({
+  weight: ["600", "700"],
+  subsets: ["latin"],
+  variable: "--font-caveat",
+  display: "swap",
+});
+
 export const metadata = {
   title: "My Oxygen - Healthy Life • Happy You",
   description:
@@ -34,7 +41,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${poppins.variable} ${inter.variable}`} {...mantineHtmlProps}>
+    <html lang="en" className={`${poppins.variable} ${inter.variable} ${caveat.variable}`} {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript defaultColorScheme="light" forceColorScheme="light" />
         <link rel="shortcut icon" href="/favicon.svg" />

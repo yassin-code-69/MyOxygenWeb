@@ -2,57 +2,94 @@
 
 import { Container, SimpleGrid, Group, Text, Box, ThemeIcon } from "@mantine/core";
 import {
-  IconAward,
   IconShieldCheck,
+  IconPlant2,
   IconTruckDelivery,
   IconCreditCard,
 } from "@tabler/icons-react";
-import { trustBadges, myOxygenColors } from "../tokens";
+import { myOxygenColors } from "../tokens";
 
-const iconMap = [
-  IconAward,
-  IconShieldCheck,
-  IconTruckDelivery,
-  IconCreditCard,
+const trustFeatures = [
+  {
+    title: "Premium Quality",
+    subtitle: "Trusted Products",
+    icon: IconShieldCheck,
+    color: "#FF6B8B",
+    bgColor: "#FFF0F3",
+  },
+  {
+    title: "Safe & Natural",
+    subtitle: "For Your Loved Ones",
+    icon: IconPlant2,
+    color: "#4CAF7D",
+    bgColor: "#EDFBF3",
+  },
+  {
+    title: "Fast Delivery",
+    subtitle: "Across Bangladesh",
+    icon: IconTruckDelivery,
+    color: "#A78BFA",
+    bgColor: "#F5F3FF",
+  },
+  {
+    title: "Secure Payment",
+    subtitle: "Multiple Options",
+    icon: IconCreditCard,
+    color: "#FF6B8B",
+    bgColor: "#FFF1F2",
+  },
 ];
 
 export function FeaturesBar() {
   return (
-    <Box
-      py="md"
-      style={{
-        backgroundColor: "#FFFFFF",
-        borderTop: "1px solid #FFF0F3",
-        borderBottom: "1px solid #FFF0F3",
-      }}
-    >
+    <Box py={{ base: "sm", md: "md" }} style={{ position: "relative", zIndex: 10 }}>
       <Container size="xl">
-        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
-          {trustBadges.map((badge, idx) => {
-            const IconComponent = iconMap[idx] || IconAward;
-            return (
-              <Group key={badge.title} gap="sm" wrap="nowrap">
-                <ThemeIcon
-                  size={42}
-                  radius="xl"
-                  variant="light"
-                  color={idx % 2 === 0 ? "primaryPink" : "secondaryGreen"}
-                  style={{ flexShrink: 0 }}
+        <Box
+          p={{ base: "md", md: "lg" }}
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 20,
+            border: "1px solid #FFE4EC",
+            boxShadow: "0 6px 24px rgba(255, 107, 139, 0.05)",
+          }}
+        >
+          <SimpleGrid cols={{ base: 2, md: 4 }} spacing={{ base: "md", md: "xl" }}>
+            {trustFeatures.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Group
+                  key={item.title}
+                  gap="sm"
+                  wrap="nowrap"
+                  style={{
+                    padding: "4px 8px",
+                  }}
                 >
-                  <IconComponent size={22} />
-                </ThemeIcon>
-                <Box>
-                  <Text fw={700} size="sm" c={myOxygenColors.darkText}>
-                    {badge.title}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {badge.subtitle}
-                  </Text>
-                </Box>
-              </Group>
-            );
-          })}
-        </SimpleGrid>
+                  <ThemeIcon
+                    size={46}
+                    radius="xl"
+                    style={{
+                      backgroundColor: item.bgColor,
+                      color: item.color,
+                      flexShrink: 0,
+                      border: `1px solid ${item.color}22`,
+                    }}
+                  >
+                    <Icon size={22} stroke={2} />
+                  </ThemeIcon>
+                  <Box>
+                    <Text fw={700} size="sm" c={myOxygenColors.darkText} style={{ lineHeight: 1.25 }}>
+                      {item.title}
+                    </Text>
+                    <Text size="xs" c="dimmed" mt={3} style={{ lineHeight: 1.25 }}>
+                      {item.subtitle}
+                    </Text>
+                  </Box>
+                </Group>
+              );
+            })}
+          </SimpleGrid>
+        </Box>
       </Container>
     </Box>
   );

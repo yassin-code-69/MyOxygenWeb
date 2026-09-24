@@ -11,6 +11,7 @@ import {
   Badge,
   ActionIcon,
   UnstyledButton,
+  Image,
 } from "@mantine/core";
 import {
   IconMapPin,
@@ -28,37 +29,26 @@ const QUICK_CATEGORIES = [
   {
     name: "Newborn",
     slug: "newborn",
-    emoji: "👶",
-    bg: "#FFE4EC",
-    color: "#E11D48",
+    icon: "/icons/newborn.svg",
+    bg: "#FFF0F3",
   },
   {
     name: "Mother Care",
     slug: "mother-care",
-    emoji: "🤰",
-    bg: "#DCFCE7",
-    color: "#16A34A",
+    icon: "/icons/mother-care.svg",
+    bg: "#EDFBF3",
   },
   {
     name: "Skin Care",
     slug: "skin-care",
-    emoji: "✨",
-    bg: "#F3E8FF",
-    color: "#9333EA",
+    icon: "/icons/skin-care.svg",
+    bg: "#F5F3FF",
   },
   {
     name: "Inner Wear",
     slug: "inner-wear",
-    emoji: "👙",
-    bg: "#FEF3C7",
-    color: "#D97706",
-  },
-  {
-    name: "All Deals",
-    slug: "all",
-    emoji: "🎁",
-    bg: "#FFE4E6",
-    color: "#FF6B8B",
+    icon: "/icons/inner-wear.svg",
+    bg: "#FFF1F2",
   },
 ];
 
@@ -80,6 +70,9 @@ export function MobileHeader() {
         background: "linear-gradient(180deg, #FFE8E1 0%, #FFF2EE 70%, #FFF8F6 100%)",
         padding: "12px 14px 14px 14px",
         borderBottom: "1px solid #FFE4EC",
+        position: "sticky",
+        top: 0,
+        zIndex: 1000,
       }}
     >
       {/* 1. Top Location Bar & Reward Points Badge */}
@@ -198,13 +191,12 @@ export function MobileHeader() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 20,
                   boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
                   border: "1px solid rgba(255, 255, 255, 0.8)",
                   transition: "transform 150ms ease",
                 }}
               >
-                {cat.emoji}
+                <Image src={cat.icon} alt={cat.name} w={28} h={28} fit="contain" />
               </Box>
               <Text
                 size="11px"

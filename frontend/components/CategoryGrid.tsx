@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Container,
   SimpleGrid,
@@ -10,113 +11,161 @@ import {
   Stack,
   Box,
   Group,
-  ThemeIcon,
 } from "@mantine/core";
-import {
-  IconArrowRight,
-  IconBabyCarriage,
-  IconHeartHandshake,
-  IconSparkles,
-  IconShirt,
-} from "@tabler/icons-react";
-import { coreCategories, myOxygenColors } from "../tokens";
+import { IconArrowRight } from "@tabler/icons-react";
+import { myOxygenColors } from "../tokens";
 
-const categoryVisuals = [
+const categories = [
   {
-    image: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=600&auto=format&fit=crop&q=80",
+    name: "Newborn",
+    slug: "newborn",
+    subtitle: "Essentials for your little bundle of joy",
+    image: "/images/cat-newborn.jpg",
+    icon: "/icons/newborn.svg",
     bgColor: "#FFF1F2",
-    accentColor: myOxygenColors.primaryPink,
-    icon: IconBabyCarriage,
+    borderColor: "#FFE4E8",
+    btnColor: "#FF6B8B",
+    btnShadow: "rgba(255, 107, 139, 0.3)",
   },
   {
-    image: "https://images.unsplash.com/photo-1544126592-807ade215a0b?w=600&auto=format&fit=crop&q=80",
-    bgColor: "#F0FDF4",
-    accentColor: myOxygenColors.secondaryGreen,
-    icon: IconHeartHandshake,
+    name: "Mother Care",
+    slug: "mother-care",
+    subtitle: "Complete care for healthy motherhood",
+    image: "/images/cat-mothercare.jpg",
+    icon: "/icons/mother-care.svg",
+    bgColor: "#ECFDF5",
+    borderColor: "#D1FAE5",
+    btnColor: "#4CAF7D",
+    btnShadow: "rgba(76, 175, 125, 0.3)",
   },
   {
-    image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&auto=format&fit=crop&q=80",
-    bgColor: "#FAF5FF",
-    accentColor: myOxygenColors.accentPurple,
-    icon: IconSparkles,
+    name: "Skin Care",
+    slug: "skin-care",
+    subtitle: "Natural care for your glowing skin",
+    image: "/images/cat-skincare.jpg",
+    icon: "/icons/skin-care.svg",
+    bgColor: "#F5F3FF",
+    borderColor: "#EDE9FE",
+    btnColor: "#A78BFA",
+    btnShadow: "rgba(167, 139, 250, 0.3)",
   },
   {
-    image: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=600&auto=format&fit=crop&q=80",
+    name: "Inner Wear",
+    slug: "inner-wear",
+    subtitle: "Comfortable & confident every day",
+    image: "/images/cat-innerwear.jpg",
+    icon: "/icons/inner-wear.svg",
     bgColor: "#FFF1F2",
-    accentColor: myOxygenColors.primaryPink,
-    icon: IconShirt,
+    borderColor: "#FFE4E8",
+    btnColor: "#FF6B8B",
+    btnShadow: "rgba(255, 107, 139, 0.3)",
   },
 ];
 
 export function CategoryGrid() {
   return (
-    <Box py={{ base: 40, md: 60 }}>
+    <Box py={{ base: 35, md: 55 }}>
       <Container size="xl">
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
-          {coreCategories.map((cat, idx) => {
-            const visual = categoryVisuals[idx] || categoryVisuals[0];
-            const Icon = visual.icon;
-
-            return (
-              <Card
-                key={cat.slug}
-                padding="lg"
-                radius="lg"
+          {categories.map((cat) => (
+            <Card
+              key={cat.slug}
+              padding="md"
+              radius={24}
+              style={{
+                backgroundColor: cat.bgColor,
+                border: `1px solid ${cat.borderColor}`,
+                boxShadow: "0 6px 20px rgba(0, 0, 0, 0.03)",
+                transition: "transform 0.25s ease, box-shadow 0.25s ease",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              {/* Category Image */}
+              <Box
                 style={{
-                  backgroundColor: visual.bgColor,
-                  border: "1px solid rgba(0, 0, 0, 0.04)",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
-                  cursor: "pointer",
+                  height: 200,
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  backgroundColor: "#FFFFFF",
                 }}
               >
-                <Card.Section>
-                  <Box style={{ height: 180, overflow: "hidden" }}>
+                <Image
+                  src={cat.image}
+                  alt={cat.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    transition: "transform 0.4s ease",
+                  }}
+                />
+              </Box>
+
+              {/* Category Details */}
+              <Stack gap="xs" mt="md" style={{ flexGrow: 1 }}>
+                <Group gap="xs" align="center" wrap="nowrap">
+                  <Box
+                    style={{
+                      width: 32,
+                      height: 32,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     <Image
-                      src={visual.image}
+                      src={cat.icon}
                       alt={cat.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
+                      w={32}
+                      h={32}
+                      fit="contain"
                     />
                   </Box>
-                </Card.Section>
-
-                <Stack justify="space-between" mt="md" gap="xs">
-                  <Group gap="xs">
-                    <ThemeIcon
-                      size={28}
-                      radius="xl"
-                      color={visual.accentColor}
-                      variant="light"
-                    >
-                      <Icon size={16} />
-                    </ThemeIcon>
-                    <Text fw={700} size="lg" c={myOxygenColors.darkText}>
-                      {cat.name}
-                    </Text>
-                  </Group>
-
-                  <Text size="xs" c="dimmed" lineClamp={2}>
-                    {cat.badge}
+                  <Text
+                    fw={800}
+                    size="lg"
+                    c={myOxygenColors.darkText}
+                    style={{ fontFamily: "var(--font-poppins)" }}
+                  >
+                    {cat.name}
                   </Text>
+                </Group>
 
+                <Text
+                  size="xs"
+                  c={myOxygenColors.textGray}
+                  style={{ minHeight: 34, lineHeight: 1.4 }}
+                >
+                  {cat.subtitle}
+                </Text>
+
+                {/* Explore Pill Button */}
+                <Box pt={4}>
                   <Button
-                    variant="subtle"
-                    color={visual.accentColor}
-                    size="sm"
+                    component={Link}
+                    href={`/categories/${cat.slug}`}
                     radius="xl"
-                    p={0}
+                    size="xs"
                     rightSection={<IconArrowRight size={14} />}
-                    style={{ alignSelf: "flex-start", fontWeight: 700 }}
+                    style={{
+                      backgroundColor: cat.btnColor,
+                      color: "#FFFFFF",
+                      fontWeight: 700,
+                      padding: "0 18px",
+                      height: 32,
+                      boxShadow: `0 4px 12px ${cat.btnShadow}`,
+                      transition: "transform 0.15s ease",
+                    }}
                   >
                     Explore
                   </Button>
-                </Stack>
-              </Card>
-            );
-          })}
+                </Box>
+              </Stack>
+            </Card>
+          ))}
         </SimpleGrid>
       </Container>
     </Box>

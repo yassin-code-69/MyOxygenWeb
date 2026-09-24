@@ -1,0 +1,99 @@
+<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="cardBg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#FFF5F7"/>
+    </radialGradient>
+    <linearGradient id="packGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E0F2FE"/>
+      <stop offset="40%" stop-color="#BAE6FD"/>
+      <stop offset="100%" stop-color="#7DD3FC"/>
+    </linearGradient>
+    <linearGradient id="pinkAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF8FA4"/>
+      <stop offset="100%" stop-color="#FF6B8B"/>
+    </linearGradient>
+    <linearGradient id="goldStar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="packShadow" x="-20%" y="-10%" width="140%" height="130%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#0284C7" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="400" height="400" rx="20" fill="url(#cardBg)"/>
+
+  <!-- Soft Shadow Under Package -->
+  <ellipse cx="200" cy="345" rx="110" ry="16" fill="#000000" opacity="0.07"/>
+  <ellipse cx="200" cy="342" rx="85" ry="10" fill="#0284C7" opacity="0.14"/>
+
+  <!-- Diaper Pack Main Body -->
+  <g filter="url(#packShadow)">
+    <!-- Main Package Bag -->
+    <rect x="100" y="70" width="200" height="250" rx="24" fill="url(#packGrad)"/>
+    
+    <!-- Top Carry Handle / Pouch Gusset -->
+    <path d="M140 70C140 52 165 42 200 42C235 42 260 52 260 70" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <rect x="155" y="48" width="90" height="16" rx="8" fill="#FFFFFF" opacity="0.9"/>
+
+    <!-- Decorative Top Wave Banner (White) -->
+    <path d="M100 120C130 110 160 125 200 115C240 105 270 120 300 110V70C300 70 290 70 280 70H120C110 70 100 70 100 70V120Z" fill="#FFFFFF" opacity="0.85"/>
+
+    <!-- Brand Header -->
+    <g transform="translate(200, 92)">
+      <circle cx="0" cy="0" r="14" fill="#FFF0F3"/>
+      <path d="M-6 -2C-6 -2 -1 3 0 4C1 3 6 -2 6 -2" stroke="#FF6B8B" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="-3" cy="-4" r="1" fill="#FF6B8B"/>
+      <circle cx="3" cy="-4" r="1" fill="#FF6B8B"/>
+    </g>
+
+    <!-- Diaper Label Content -->
+    <!-- Soft White Cloud Card -->
+    <rect x="118" y="130" width="164" height="135" rx="18" fill="#FFFFFF" fill-opacity="0.95"/>
+    
+    <!-- Title Text -->
+    <text x="200" y="156" font-family="'Poppins', sans-serif" font-size="16" font-weight="800" fill="#0284C7" text-anchor="middle" letter-spacing="-0.3">
+      Baby Diaper
+    </text>
+    <text x="200" y="172" font-family="'Inter', sans-serif" font-size="9" font-weight="600" fill="#64748B" text-anchor="middle" letter-spacing="0.5">
+      ULTRA SOFT &amp; DRY
+    </text>
+
+    <!-- Cute Diaper Illustration on Package -->
+    <g transform="translate(200, 208)">
+      <!-- Diaper outline -->
+      <path d="M-32 -16C-32 -16 -36 8 -24 20C-12 28 12 28 24 20C36 8 32 -16 32 -16C24 -14 12 -12 0 -12C-12 -12 -24 -14 -32 -16Z" fill="#F0F9FF" stroke="#38BDF8" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Soft waist elastic band with pink dots -->
+      <path d="M-30 -14C-15 -11 15 -11 30 -14" stroke="#FF8FA4" stroke-width="3" stroke-dasharray="3 3"/>
+      <!-- Cute smile on diaper -->
+      <path d="M-6 4C-4 8 4 8 6 4" stroke="#0284C7" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="-10" cy="1" r="2" fill="#FFA8BA"/>
+      <circle cx="10" cy="1" r="2" fill="#FFA8BA"/>
+    </g>
+
+    <!-- Size & Absorbency Badges -->
+    <rect x="130" y="244" width="46" height="15" rx="7.5" fill="#E0F2FE"/>
+    <text x="153" y="254" font-family="'Inter', sans-serif" font-size="8" font-weight="700" fill="#0284C7" text-anchor="middle">
+      SIZE S
+    </text>
+    <rect x="182" y="244" width="88" height="15" rx="7.5" fill="#FEF3C7"/>
+    <text x="226" y="254" font-family="'Inter', sans-serif" font-size="8" font-weight="700" fill="#D97706" text-anchor="middle">
+      12H ABSORB ★
+    </text>
+
+    <!-- Bottom Pink Ribbon on Bag -->
+    <path d="M100 290H300V308C300 316.837 292.837 324 284 324H116C107.163 324 100 316.837 100 308V290Z" fill="url(#pinkAccent)"/>
+    <text x="200" y="309" font-family="'Inter', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">
+      50 PCS • BREATHABLE
+    </text>
+
+    <!-- Floating Sparkles & Clouds -->
+    <!-- Star 1 -->
+    <polygon points="122,86 125,93 132,94 127,99 128,106 122,102 116,106 117,99 112,94 119,93" fill="url(#goldStar)"/>
+    <!-- Star 2 -->
+    <polygon points="278,92 280,97 285,98 281,102 282,107 278,104 274,107 275,102 271,98 276,97" fill="url(#goldStar)"/>
+  </g>
+</svg>

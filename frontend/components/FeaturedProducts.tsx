@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Container,
   Title,
@@ -13,129 +14,187 @@ import {
   Button,
   Rating,
   Box,
-  Badge,
 } from "@mantine/core";
-import { IconHeart, IconShoppingCart } from "@tabler/icons-react";
+import { IconHeart, IconArrowRight } from "@tabler/icons-react";
 import { myOxygenColors } from "../tokens";
+import { useCartStore } from "../lib/cart-store";
+import { notifications } from "@mantine/notifications";
 
-const sampleProducts = [
+interface MockProduct {
+  id: string;
+  title: string;
+  category: string;
+  categorySlug: string;
+  price: number;
+  rating: number;
+  reviewsCount: number;
+  image: string;
+}
+
+const mockFeaturedProducts: MockProduct[] = [
   {
-    id: "1",
-    title: "Ultra Soft Baby Diaper (Pants)",
+    id: "prod-diaper-1",
+    title: "Baby Diaper",
     category: "Newborn",
-    price: "850",
-    rating: 4.9,
-    reviewsCount: 124,
-    image: "https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&auto=format&fit=crop&q=80",
-    inStock: true,
-  },
-  {
-    id: "2",
-    title: "Complete Pregnancy Multivitamin",
-    category: "Mother Care",
-    price: "1,250",
+    categorySlug: "newborn",
+    price: 850,
     rating: 4.8,
+    reviewsCount: 124,
+    image: "/images/prod-diaper.svg",
+  },
+  {
+    id: "prod-vitamin-2",
+    title: "Pregnancy Vitamin",
+    category: "Mother Care",
+    categorySlug: "mother-care",
+    price: 1250,
+    rating: 4.9,
     reviewsCount: 98,
-    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop&q=80",
-    inStock: true,
+    image: "/images/prod-vitamins.svg",
   },
   {
-    id: "3",
-    title: "Natural Hydrating Face Wash",
+    id: "prod-facewash-3",
+    title: "Face Wash (Skin Care)",
     category: "Skin Care",
-    price: "650",
+    categorySlug: "skin-care",
+    price: 650,
     rating: 4.7,
-    reviewsCount: 210,
-    image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&auto=format&fit=crop&q=80",
-    inStock: true,
+    reviewsCount: 76,
+    image: "/images/prod-facewash.svg",
   },
   {
-    id: "4",
-    title: "Seamless Comfort Nursing Bra",
+    id: "prod-bra-4",
+    title: "Comfort Bra",
     category: "Inner Wear",
-    price: "1,100",
+    categorySlug: "inner-wear",
+    price: 1100,
     rating: 4.9,
     reviewsCount: 87,
-    image: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=600&auto=format&fit=crop&q=80",
-    inStock: true,
+    image: "/images/prod-bra.jpg",
   },
 ];
 
-const categoriesList = ["All", "Newborn", "Mother Care", "Skin Care", "Inner Wear"];
+const categoryTabs = ["Newborn", "Mother Care", "Skin Care", "Inner Wear"];
 
 export function FeaturedProducts() {
-  const [activeTab, setActiveTab] = useState("All");
+  const [activeTab, setActiveTab] = useState<string>("Newborn");
   const [wishlist, setWishlist] = useState<Record<string, boolean>>({});
+  const addItem = useCartStore((state) => state.addItem);
 
   const toggleWishlist = (id: string) => {
     setWishlist((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const filteredProducts =
-    activeTab === "All"
-      ? sampleProducts
-      : sampleProducts.filter((p) => p.category === activeTab);
+  const handleAddToCart = (prod: MockProduct) => {
+    addItem({
+      id: prod.id,
+      title: prod.title,
+      slug: prod.id,
+      unitPrice: prod.price,
+      image: prod.image,
+    });
+    notifications.show({
+      title: "Added to Cart",
+      message: `${prod.title} (৳ ${prod.price.toLocaleString()}) has been added.`,
+      color: "pink",
+    });
+  };
 
   return (
-    <Box py={{ base: 40, md: 60 }} style={{ backgroundColor: "#FFFFFF" }}>
+    <Box py={{ base: 35, md: 55 }} style={{ backgroundColor: "#FFF8F6" }}>
       <Container size="xl">
-        <Group justify="space-between" align="center" mb="lg">
-          <Title
-            order={2}
+        {/* Section Heading & Category Tabs */}
+        <Group justify="space-between" align="center" mb="xl" wrap="wrap" gap="md">
+          <Group gap="lg" align="center" wrap="wrap">
+            <Title
+              order={2}
+              style={{
+                fontSize: "1.75rem",
+                fontWeight: 800,
+                color: myOxygenColors.darkText,
+                fontFamily: "var(--font-poppins)",
+              }}
+            >
+              Featured Products
+            </Title>
+
+            {/* Category Filter Pills matching mockup */}
+            <Group gap="xs" wrap="wrap">
+              {categoryTabs.map((cat) => {
+                const isActive = activeTab === cat;
+                return (
+                  <Button
+                    key={cat}
+                    size="xs"
+                    radius="xl"
+                    variant={isActive ? "filled" : "subtle"}
+                    color={isActive ? "primaryPink" : "gray"}
+                    onClick={() => setActiveTab(cat)}
+                    fw={isActive ? 700 : 500}
+                    style={{
+                      backgroundColor: isActive ? myOxygenColors.primaryPink : "transparent",
+                      color: isActive ? "#FFFFFF" : myOxygenColors.textGray,
+                      padding: "0 14px",
+                      height: 30,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {cat}
+                  </Button>
+                );
+              })}
+            </Group>
+          </Group>
+
+          {/* View All Link */}
+          <Link
+            href="/products"
             style={{
-              fontSize: "1.75rem",
-              fontWeight: 800,
-              color: myOxygenColors.darkText,
-              fontFamily: "var(--font-poppins)",
+              textDecoration: "none",
+              color: myOxygenColors.primaryPink,
+              fontWeight: 700,
+              fontSize: "0.88rem",
             }}
           >
-            Featured Products
-          </Title>
-
-          {/* Category Filter Chips */}
-          <Group gap="xs" wrap="wrap">
-            {categoriesList.map((cat) => (
-              <Button
-                key={cat}
-                size="xs"
-                radius="xl"
-                variant={activeTab === cat ? "filled" : "subtle"}
-                color={activeTab === cat ? "primaryPink" : "gray"}
-                onClick={() => setActiveTab(cat)}
-                fw={600}
-              >
-                {cat}
-              </Button>
-            ))}
-          </Group>
+            <Group gap={4}>
+              <Text inherit>View All</Text>
+              <IconArrowRight size={16} stroke={2.5} />
+            </Group>
+          </Link>
         </Group>
 
-        {/* Product Cards Grid */}
-        <SimpleGrid cols={{ base: 2, sm: 2, md: 4 }} spacing={{ base: "xs", sm: "md", md: "lg" }}>
-          {filteredProducts.map((prod) => {
+        {/* 4 Products Grid */}
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
+          {mockFeaturedProducts.map((prod) => {
             const isLiked = wishlist[prod.id] || false;
 
             return (
               <Card
                 key={prod.id}
                 padding="md"
-                radius="lg"
+                radius={20}
                 style={{
-                  border: "1px solid #F3F4F6",
+                  border: "1px solid #FFE4EC",
                   backgroundColor: "#FFFFFF",
-                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.03)",
+                  boxShadow: "0 4px 20px rgba(255, 107, 139, 0.05)",
                   position: "relative",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                  transition: "transform 0.25s ease, box-shadow 0.25s ease",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
                 }}
               >
-                {/* Product Image Container with Wishlist Icon */}
+                {/* Product Image Container */}
                 <Box
                   style={{
                     position: "relative",
                     height: 200,
-                    borderRadius: "12px",
+                    borderRadius: 16,
                     overflow: "hidden",
-                    backgroundColor: "#F9FAFB",
+                    backgroundColor: "#FFF9FA",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   <Image
@@ -147,63 +206,74 @@ export function FeaturedProducts() {
                       objectFit: "cover",
                     }}
                   />
+
+                  {/* Wishlist Heart Icon */}
                   <ActionIcon
                     variant="filled"
-                    color={isLiked ? "red" : "white"}
-                    c={isLiked ? "white" : "gray"}
                     radius="xl"
                     size="md"
                     style={{
                       position: "absolute",
                       top: 10,
                       right: 10,
-                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
+                      backgroundColor: "#FFFFFF",
+                      color: isLiked ? myOxygenColors.primaryPink : "#9CA3AF",
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
                     }}
                     onClick={() => toggleWishlist(prod.id)}
+                    aria-label="Save to Wishlist"
                   >
-                    <IconHeart size={16} fill={isLiked ? "currentColor" : "none"} />
+                    <IconHeart
+                      size={16}
+                      fill={isLiked ? myOxygenColors.primaryPink : "none"}
+                    />
                   </ActionIcon>
                 </Box>
 
-                {/* Product Info */}
-                <Box mt="sm">
-                  <Badge size="xs" variant="light" color="primaryPink">
-                    {prod.category}
-                  </Badge>
-
+                {/* Product Details */}
+                <Box mt="md" style={{ flexGrow: 1 }}>
                   <Text
                     fw={700}
                     size="sm"
                     c={myOxygenColors.darkText}
-                    mt={6}
+                    style={{ fontFamily: "var(--font-poppins)", minHeight: 20 }}
                     lineClamp={1}
                   >
                     {prod.title}
                   </Text>
 
+                  <Text fw={800} size="md" c={myOxygenColors.darkText} mt={4}>
+                    ৳ {prod.price.toLocaleString()}
+                  </Text>
+
+                  {/* Star Rating and Review Count */}
                   <Group gap={6} align="center" mt={4}>
-                    <Rating value={prod.rating} fractions={2} readOnly size="xs" color="yellow" />
+                    <Rating
+                      value={prod.rating}
+                      fractions={2}
+                      readOnly
+                      size="xs"
+                      color="yellow"
+                    />
                     <Text size="xs" c="dimmed">
                       ({prod.reviewsCount})
                     </Text>
                   </Group>
 
-                  <Group justify="space-between" align="center" mt="sm">
-                    <Text fw={800} size="lg" c={myOxygenColors.darkText}>
-                      ৳ {prod.price}
-                    </Text>
-                  </Group>
-
+                  {/* Add to Cart Button (Solid pink pill matching mockup) */}
                   <Button
                     fullWidth
                     radius="xl"
-                    color="primaryPink"
                     size="sm"
                     mt="md"
-                    leftSection={<IconShoppingCart size={16} />}
-                    fw={700}
+                    onClick={() => handleAddToCart(prod)}
                     style={{
-                      boxShadow: "0 4px 12px rgba(255, 107, 139, 0.3)",
+                      backgroundColor: myOxygenColors.primaryPink,
+                      color: "#FFFFFF",
+                      fontWeight: 700,
+                      height: 38,
+                      boxShadow: "0 4px 14px rgba(255, 107, 139, 0.35)",
+                      transition: "transform 0.15s ease",
                     }}
                   >
                     Add to Cart

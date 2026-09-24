@@ -39,17 +39,16 @@ export function AnimatedSection({
 
   return (
     <motion.section
-      initial={{ opacity: 0, ...initialOffset }}
-      whileInView={{ opacity: 1, x: 0, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
+      initial={{ opacity: 0, y: 15 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "300px 0px" }}
       transition={{
-        duration: 0.5,
+        duration: 0.4,
         delay,
-        ease: [0.22, 1, 0.36, 1], // easeOutCubic
+        ease: "easeOut",
       }}
       className={className}
       style={{
-        willChange: "opacity, transform",
         ...style,
       }}
       {...props}

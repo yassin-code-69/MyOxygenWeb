@@ -10,10 +10,12 @@ import {
   Button,
   ActionIcon,
   Badge,
+  Indicator,
   Box,
   Menu,
   Avatar,
   UnstyledButton,
+  Image,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -101,12 +103,14 @@ export function Navbar() {
         component="header"
         visibleFrom="md"
         style={{
-          backgroundColor: "#FFFFFF",
+          backgroundColor: "rgba(255, 255, 255, 0.96)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
           borderBottom: "1px solid #FFE4EC",
           position: "sticky",
           top: 0,
-          zIndex: 100,
-          boxShadow: "0 2px 10px rgba(255, 107, 139, 0.04)",
+          zIndex: 1000,
+          boxShadow: "0 4px 20px rgba(255, 107, 139, 0.08)",
         }}
       >
         <Container size="xl" py="sm">
@@ -116,18 +120,20 @@ export function Navbar() {
               <Group gap="xs">
                 <Box
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #FF6B8B 0%, #4CAF7D 100%)",
+                    width: 42,
+                    height: 42,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#FFFFFF",
-                    boxShadow: "0 4px 10px rgba(255, 107, 139, 0.25)",
                   }}
                 >
-                  <IconHeartHandshake size={24} />
+                  <Image
+                    src="/icons/logo-heart.svg"
+                    alt="My Oxygen Logo"
+                    w={42}
+                    h={42}
+                    fit="contain"
+                  />
                 </Box>
                 <Box>
                   <Text
@@ -142,7 +148,7 @@ export function Navbar() {
                   >
                     My Oxygen
                   </Text>
-                  <Text size="11px" c="dimmed" fw={500}>
+                  <Text size="11px" c="dimmed" fw={500} style={{ letterSpacing: "0.02em" }}>
                     Healthy Life • Happy You
                   </Text>
                 </Box>
@@ -150,14 +156,19 @@ export function Navbar() {
             </Link>
 
             {/* Navigation Links */}
-            <Group gap="lg">
+            <Group gap="xl">
               <Text
                 component={Link}
                 href="/"
-                fw={600}
+                fw={700}
                 size="sm"
-                c="primaryPink"
-                style={{ cursor: "pointer", textDecoration: "none" }}
+                style={{
+                  cursor: "pointer",
+                  textDecoration: "none",
+                  color: myOxygenColors.primaryPink,
+                  borderBottom: `2px solid ${myOxygenColors.primaryPink}`,
+                  paddingBottom: 2,
+                }}
               >
                 Home
               </Text>
@@ -167,7 +178,7 @@ export function Navbar() {
                 fw={500}
                 size="sm"
                 c="dimmed"
-                style={{ cursor: "pointer", textDecoration: "none" }}
+                style={{ cursor: "pointer", textDecoration: "none", transition: "color 0.2s" }}
               >
                 Shop
               </Text>
@@ -211,24 +222,20 @@ export function Navbar() {
               >
                 Inner Wear
               </Text>
+              <Text
+                component={Link}
+                href="/products"
+                fw={500}
+                size="sm"
+                c="dimmed"
+                style={{ cursor: "pointer", textDecoration: "none" }}
+              >
+                About Us
+              </Text>
             </Group>
 
             {/* Action Icons, Dev Shortcut & Auth CTA */}
             <Group gap="sm">
-              {/* Dev Shortcut Button */}
-              <Button
-                variant="light"
-                color="pink"
-                size="xs"
-                radius="xl"
-                loading={isLoggingInDev}
-                leftSection={<IconSparkles size={14} />}
-                onClick={handleDevAdminLogin}
-                style={{ fontWeight: 700 }}
-              >
-                ⚡ Dev Admin
-              </Button>
-
               <ActionIcon
                 component={Link}
                 href="/products"
@@ -251,31 +258,41 @@ export function Navbar() {
                 <IconHeart size={20} />
               </ActionIcon>
 
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="lg"
-                radius="xl"
-                onClick={openDrawer}
-                aria-label={`Shopping cart with ${cartBadgeCount} items`}
-                style={{ position: "relative" }}
+              <Indicator
+                label={cartBadgeCount}
+                disabled={cartBadgeCount === 0}
+                size={18}
+                color="pink"
+                offset={4}
+                withBorder
+                styles={{
+                  indicator: {
+                    backgroundColor: "#FF4D6D !important",
+                    color: "#FFFFFF",
+                    fontWeight: 700,
+                    fontSize: "11px",
+                    lineHeight: "18px",
+                    padding: 0,
+                    minWidth: 18,
+                    height: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 6px rgba(255, 77, 109, 0.45)",
+                  },
+                }}
               >
-                <IconShoppingBag size={20} />
-                {cartBadgeCount > 0 && (
-                  <Badge
-                    size="xs"
-                    circle
-                    color="primaryPink"
-                    style={{
-                      position: "absolute",
-                      top: -2,
-                      right: -2,
-                    }}
-                  >
-                    {cartBadgeCount}
-                  </Badge>
-                )}
-              </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="lg"
+                  radius="xl"
+                  onClick={openDrawer}
+                  aria-label={`Shopping cart with ${cartBadgeCount} items`}
+                >
+                  <IconShoppingBag size={20} />
+                </ActionIcon>
+              </Indicator>
 
               {/* User Authentication Menu or Login Button */}
               {mounted && isAuthenticated && user ? (
@@ -336,11 +353,15 @@ export function Navbar() {
                   component={Link}
                   href="/login"
                   radius="xl"
-                  color="primaryPink"
                   size="sm"
                   fw={600}
                   style={{
+                    backgroundColor: myOxygenColors.primaryPink,
+                    color: "#FFFFFF",
                     boxShadow: "0 4px 14px rgba(255, 107, 139, 0.35)",
+                    padding: "0 20px",
+                    height: 38,
+                    transition: "transform 0.15s ease, box-shadow 0.15s ease",
                   }}
                 >
                   Login / Signup

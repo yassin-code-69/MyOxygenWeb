@@ -1,0 +1,22 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="heartPinkGrad" x1="8" y1="8" x2="36" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF8FA4" />
+      <stop offset="100%" stop-color="#FF6B8B" />
+    </linearGradient>
+    <linearGradient id="leafGreenGrad" x1="16" y1="4" x2="44" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5DDC90" />
+      <stop offset="100%" stop-color="#4CAF7D" />
+    </linearGradient>
+  </defs>
+  <!-- Main Heart contour -->
+  <path d="M24 42C24 42 6 30 6 18C6 11 11.5 6 18.5 6C21.8 6 23.8 7.5 24 8C24.2 7.5 26.2 6 29.5 6C36.5 6 42 11 42 18C42 30 24 42 24 42Z" fill="url(#heartPinkGrad)" opacity="0.12"/>
+  <path d="M24 40C24 40 8 28.5 8 18C8 12 12.5 8 18 8C21 8 23 9.5 24 10.5C25 9.5 27 8 30 8C35.5 8 40 12 40 18C40 28.5 24 40 24 40Z" stroke="url(#heartPinkGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Mother and baby inner silhouette -->
+  <path d="M19 17C20.6569 17 22 15.6569 22 14C22 12.3431 20.6569 11 19 11C17.3431 11 16 12.3431 16 14C16 15.6569 17.3431 17 19 17Z" fill="#FF6B8B"/>
+  <path d="M15 28C15 23 17 20 21 19C19 21 19 23 20 25C20.5 26 21.5 27 22.5 27C21 29 18 31 15 28Z" fill="#FF6B8B"/>
+  <circle cx="23" cy="22" r="2" fill="#4CAF7D"/>
+  <!-- Green organic leaf curling around right/top -->
+  <path d="M30 6C36 6 42 11 42 18C42 24 37 31 30 36C34 29 37 23 35 17C33 12 28 8 24 8C26 7 28 6 30 6Z" fill="url(#leafGreenGrad)"/>
+  <path d="M37 6C40 4 43 5 44 8C44 11 41 12 38 12C37 10 37 7 37 6Z" fill="#4CAF7D"/>
+</svg>
