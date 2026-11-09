@@ -1,171 +1,136 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, Group, Text, Badge, UnstyledButton } from "@mantine/core";
+import { Badge, Box, UnstyledButton } from "@mantine/core";
 import {
+  IconBuildingStore,
   IconHome,
-  IconCategory,
+  IconReceipt2,
   IconShoppingBag,
-  IconHeart,
   IconUser,
-  IconShieldLock,
+  type Icon,
 } from "@tabler/icons-react";
 import { useCartStore } from "../lib/cart-store";
-import { useAuthStore } from "../lib/auth-store";
-import { myOxygenColors } from "../tokens";
+import { useCartCount } from "./storefront/CartButton";
+import { useSessionStatus } from "./storefront/AccountMenu";
+import classes from "./storefront/MobileBottomNav.module.css";
 
+interface NavLinkItem {
+  kind: "link";
+  label: string;
+  href: string;
+  icon: Icon;
+  active: boolean;
+}
+
+interface NavActionItem {
+  kind: "action";
+  label: string;
+  icon: Icon;
+  active: boolean;
+  onClick: () => void;
+  badge: number;
+}
+
+type NavItem = NavLinkItem | NavActionItem;
+
+function ItemContent({ item, badge }: { item: NavItem; badge?: number }) {
+  const IconComponent = item.icon;
+  return (
+    <>
+      <span className={classes.iconWrap}>
+        <IconComponent className={classes.icon} size={22} stroke={item.active ? 2.2 : 1.7} aria-hidden />
+        {badge && badge > 0 ? (
+          <Badge size="xs" circle color="primaryPink.8" className={classes.badge} aria-hidden>
+            {badge > 99 ? "99+" : badge}
+          </Badge>
+        ) : null}
+      </span>
+      <span>{item.label}</span>
+    </>
+  );
+}
+
+/**
+ * Fixed bottom navigation for phones (< 768px), mounted ONCE in `app/layout.tsx`.
+ * Hidden on `/admin`. Home · Shop · Cart (opens the drawer, live badge) · Orders · Account
+ * (`/account` when signed in, `/login` otherwise).
+ */
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const totalCount = useCartStore((state) => state.totalCount());
+  const cartCount = useCartCount();
+  const isDrawerOpen = useCartStore((state) => state.isDrawerOpen);
   const openDrawer = useCartStore((state) => state.openDrawer);
-  const { user, isAuthenticated } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const session = useSessionStatus();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Do not display on full-screen admin back-office pages
   if (pathname.startsWith("/admin")) {
     return null;
   }
 
-  const items = [
+  const signedIn = session === "signed-in";
+  const items: NavItem[] = [
+    { kind: "link", label: "Home", href: "/", icon: IconHome, active: pathname === "/" },
     {
-      label: "Home",
-      href: "/",
-      icon: IconHome,
-      isActive: pathname === "/",
-    },
-    {
-      label: "Catalog",
+      kind: "link",
+      label: "Shop",
       href: "/products",
-      icon: IconCategory,
-      isActive: pathname.startsWith("/products") || pathname.startsWith("/categories"),
+      icon: IconBuildingStore,
+      active: pathname.startsWith("/products") || pathname.startsWith("/categories"),
     },
     {
+      kind: "action",
       label: "Cart",
-      isAction: true,
-      onClick: () => openDrawer(),
       icon: IconShoppingBag,
-      badge: mounted && totalCount > 0 ? totalCount : null,
-      isActive: false,
+      active: isDrawerOpen,
+      onClick: openDrawer,
+      badge: cartCount,
     },
     {
-      label: "Wishlist",
-      href: "/products",
-      icon: IconHeart,
-      isActive: false,
+      kind: "link",
+      label: "Orders",
+      href: "/orders",
+      icon: IconReceipt2,
+      active: pathname.startsWith("/orders"),
     },
     {
-      label: isAuthenticated ? (user?.role === "SUPER_ADMIN" ? "Admin" : "Account") : "Login",
-      href: isAuthenticated ? (user?.role === "SUPER_ADMIN" ? "/admin" : "/login") : "/login",
-      icon: user?.role === "SUPER_ADMIN" ? IconShieldLock : IconUser,
-      isActive: pathname === "/login" || pathname === "/register",
+      // Stable label (no text flicker while the session hydrates); signed out → login.
+      kind: "link",
+      label: "Account",
+      href: signedIn ? "/account" : "/login",
+      icon: IconUser,
+      active: pathname.startsWith("/account") || pathname === "/login" || pathname === "/register",
     },
   ];
 
   return (
-    <Box
-      component="nav"
-      aria-label="Mobile Navigation Bar"
-      style={{
-        display: "block",
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 9999,
-        backgroundColor: "rgba(255, 255, 255, 0.95)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderTop: "1px solid #FFE4EC",
-        boxShadow: "0 -4px 20px rgba(255, 107, 139, 0.08)",
-        paddingBottom: "env(safe-area-inset-bottom, 6px)",
-      }}
-      className="mobile-bottom-nav-wrapper"
-    >
-      <Group justify="space-around" align="center" py={8} px={6} gap={0} wrap="nowrap">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const activeColor = myOxygenColors.primaryPink;
-          const inactiveColor = "#9CA3AF";
-          const color = item.isActive ? activeColor : inactiveColor;
-
-          const content = (
-            <Box
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-                padding: "4px 8px",
-                borderRadius: "12px",
-                transition: "all 150ms ease",
-              }}
-            >
-              <Box style={{ position: "relative" }}>
-                <Icon size={22} color={color} stroke={item.isActive ? 2.3 : 1.7} />
-                {item.badge ? (
-                  <Badge
-                    size="xs"
-                    circle
-                    color="pink"
-                    style={{
-                      position: "absolute",
-                      top: -4,
-                      right: -8,
-                      backgroundColor: myOxygenColors.primaryPink,
-                      fontSize: 10,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {item.badge}
-                  </Badge>
-                ) : null}
-              </Box>
-              <Text
-                size="10px"
-                mt={2}
-                fw={item.isActive ? 700 : 500}
-                c={item.isActive ? myOxygenColors.primaryPink : "#6B7280"}
-                style={{ letterSpacing: "-0.01em" }}
+    <Box component="nav" hiddenFrom="sm" aria-label="Mobile navigation" className={`${classes.root} mo-glass`}>
+      <ul className={classes.list}>
+        {items.map((item) => (
+          <li key={item.label}>
+            {item.kind === "action" ? (
+              <UnstyledButton
+                className={classes.item}
+                data-active={item.active || undefined}
+                onClick={item.onClick}
+                aria-haspopup="dialog"
+                aria-label={item.badge > 0 ? `${item.label}, ${item.badge} items` : item.label}
               >
-                {item.label}
-              </Text>
-            </Box>
-          );
-
-          if (item.isAction) {
-            return (
-              <UnstyledButton key={item.label} onClick={item.onClick} style={{ textAlign: "center" }}>
-                {content}
+                <ItemContent item={item} badge={item.badge} />
               </UnstyledButton>
-            );
-          }
-
-          return (
-            <Link
-              key={item.label}
-              href={item.href!}
-              style={{ textDecoration: "none", textAlign: "center" }}
-            >
-              {content}
-            </Link>
-          );
-        })}
-      </Group>
-
-      <style jsx global>{`
-        @media (min-width: 768px) {
-          .mobile-bottom-nav-wrapper {
-            display: none !important;
-          }
-        }
-      `}</style>
+            ) : (
+              <Link
+                href={item.href}
+                className={classes.item}
+                data-active={item.active || undefined}
+                aria-current={item.active ? "page" : undefined}
+              >
+                <ItemContent item={item} />
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
     </Box>
   );
 }

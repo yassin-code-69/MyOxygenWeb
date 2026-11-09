@@ -1,31 +1,53 @@
-# Dependencies
-node_modules/
-*/node_modules/
-.pnp
-.pnp.js
+# =============================================================================
+# My Oxygen — repository-wide ignore rules (backend/ and frontend/ are
+# independent projects; patterns without a leading slash match at any depth).
+# =============================================================================
 
-# Next.js and build outputs
+# --- Secrets -----------------------------------------------------------------
+# Environment files hold secrets. Only the templates and the secret-free
+# backend test env are tracked. Never force-add a real .env file.
+.env
+.env.*
+!.env.example
+!backend/.env.test
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Dependencies ------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.*
+
+# --- Build output & caches ---------------------------------------------------
 .next/
-*/.next/
 out/
 dist/
 build/
 coverage/
 *.tsbuildinfo
+.eslintcache
+.cache/
 
-# Debug logs
+# --- Logs --------------------------------------------------------------------
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Uploads
+# --- Runtime data ------------------------------------------------------------
+# Generated invoice PDFs and other uploads (keep only placeholder files)
 backend/uploads/*
 !backend/uploads/**/.gitkeep
+# Throwaway test database cluster (backend/scripts/test-db.ts)
+backend/.testdb/
 
-# System and IDE
+# --- OS / editors / local agent settings ---------------------------------------
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+*.swp
+.claude/settings.local.json

@@ -1,44 +1,160 @@
+# =============================================================================
+# My Oxygen — single-host container stack (production build of both apps)
+#
+#   cp backend/.env.example backend/.env   # Supabase URLs, JWT_SECRET (>= 64 chars), CORS_ORIGIN, ...
+#   docker compose build
+#   docker compose run --rm migrate        # apply DB migrations (explicit, never automatic)
+#   docker compose up -d                   # redis + backend (:4000) + frontend (:3000)
+#
+# Optional:
+#   docker compose run --rm migrate bun run db:seed   # needs SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD
+#   docker compose up -d test-db                       # local Postgres for `bun run test` (profile "test")
+#
+# Secrets live only in backend/.env (git-ignored) and are never inlined here.
+# The containers always run with NODE_ENV=production, whatever backend/.env says.
+# NEXT_PUBLIC_API_URL (browser-facing API origin) is baked into the frontend
+# image at build time; set it in your shell or a git-ignored root .env file.
+# =============================================================================
+
+name: my-oxygen
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-hardening: &hardening
+  init: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
 services:
-  backend:
+  # ---------------------------------------------------------------------------
+  # Redis — BullMQ queues (internal network only, no host port)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # One-off: database migrations / seed (profile "migrate"; started only when
+  # targeted explicitly, e.g. `docker compose run --rm migrate`).
+  # Uses DIRECT_URL (Supabase session pooler :5432) from backend/.env.
+  # ---------------------------------------------------------------------------
+  migrate:
+    <<: *hardening
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: my-oxygen-backend
+      target: migrator
+    image: my-oxygen-migrator:local
+    profiles: ["migrate"]
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+    restart: "no"
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # API — Bun + Hono
+  # ---------------------------------------------------------------------------
+  backend:
+    <<: *hardening
+    build:
+      context: ./backend
+      target: runtime
+    image: my-oxygen-backend:local
     ports:
       - "4000:4000"
+    env_file:
+      - ./backend/.env
     environment:
-      - PORT=4000
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres.adwxwwcnxpcuwkjheqaj:MyOxygenSecurePass2026!@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:MyOxygenSecurePass2026!@db.adwxwwcnxpcuwkjheqaj.supabase.co:5432/postgres}
-      - JWT_SECRET=${JWT_SECRET:-my_oxygen_super_secure_jwt_secret_token_2026_at_least_32_chars!}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000,http://localhost:4000}
+      NODE_ENV: production
+      PORT: "4000"
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:4000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
+    stop_grace_period: 15s
     restart: unless-stopped
+    logging: *default-logging
 
+  # ---------------------------------------------------------------------------
+  # Storefront + back-office — Next.js standalone
+  # ---------------------------------------------------------------------------
   frontend:
+    <<: *hardening
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: my-oxygen-frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    image: my-oxygen-frontend:local
     ports:
       - "3000:3000"
-    environment:
-      - PORT=3000
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
+    stop_grace_period: 15s
     restart: unless-stopped
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Throwaway Postgres for the backend test-suite (profile "test").
+  # Matches backend/.env.test (localhost:54329, user postgres, trust auth,
+  # database my_oxygen_test). Data lives in tmpfs and vanishes on stop.
+  #   docker compose up -d test-db
+  #   cd backend && TEST_DATABASE_URL=postgresql://postgres@localhost:54329/my_oxygen_test bun run test
+  # ---------------------------------------------------------------------------
+  test-db:
+    image: postgres:17-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: my_oxygen_test
+      # Local-only, loopback-bound, disposable database.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    ports:
+      - "127.0.0.1:54329:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d my_oxygen_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  redis_data:
+  backend_uploads:

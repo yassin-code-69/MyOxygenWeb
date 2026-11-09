@@ -1,18 +1,61 @@
-import { db } from "../db";
+/**
+ * Automatic-discount pricing engine (flash sales and sale prices).
+ *
+ * Only AUTOMATIC discounts (`discounts.code IS NULL`) ever change a catalog
+ * price; coupons (rows with a code) are applied at checkout by the coupon
+ * service and are ignored here.
+ *
+ * Winner selection for a product (the SQL twin lives in catalog.service.ts
+ * and must stay identical):
+ *   1. scope priority: product-specific > category > store-wide
+ *      (store-wide = no product and no category);
+ *   2. within the best scope: largest discount amount;
+ *   3. tie: the discount ending first, then the lowest id.
+ * Amounts are computed in integer cents:
+ *   PERCENTAGE   round_half_up(base * value / 100) (value <= 100)
+ *   FIXED_AMOUNT value
+ *   then capped by max_discount_amount (when set) and by the base price.
+ */
+import { and, eq, gt, isNull, lte, or, type SQL } from "drizzle-orm";
+import { db as defaultDb } from "../db/client";
 import { discounts } from "../db/schema/tables";
-import { and, eq, lte, gte, or } from "drizzle-orm";
+import type { DiscountType } from "../types";
+import type { DbExecutor } from "./db-executor";
 
+export type { DiscountType };
+
+/** A discount as stored in the database (a `discounts` row satisfies this). */
 export interface Discount {
   id: string;
   code?: string | null;
-  type: "PERCENTAGE" | "FIXED_AMOUNT" | string;
-  value: string;
+  name?: string | null;
+  type: DiscountType;
+  value: string | number;
   productId?: string | null;
   categoryId?: string | null;
+  maxDiscountAmount?: string | number | null;
   startsAt?: Date | string;
   endsAt?: Date | string;
   isFlashSale?: boolean;
   isActive?: boolean;
+}
+
+export interface PricedProductInput {
+  id: string;
+  categoryId: string;
+  basePrice: string | number;
+}
+
+export interface EffectivePriceResult {
+  /** Effective unit price as a 2-decimal string (e.g. "800.00"); kept for existing callers. */
+  effectivePrice: string;
+  /** Winning automatic discount, or null. */
+  discount: Discount | null;
+  basePriceValue: number;
+  effectivePriceValue: number;
+  discountAmount: number;
+  /** Discount as a percentage of the base price, 2 decimals. */
+  discountPercent: number;
 }
 
 export interface EffectivePricing {
@@ -21,187 +64,170 @@ export interface EffectivePricing {
   discountPercent: number;
 }
 
+// ---------------------------------------------------------------------------
+// Integer-cent arithmetic (mirrors Postgres numeric rounding: half away from zero)
+// ---------------------------------------------------------------------------
+
+/** Money value → integer cents. Throws on non-finite input instead of silently using 0. */
+export function toCents(value: string | number): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new RangeError(`Invalid money value "${String(value)}"`);
+  }
+  return Math.round(parsed * 100);
+}
+
+export function fromCents(cents: number): number {
+  return cents / 100;
+}
+
+function roundHalfUpDiv(numerator: number, divisor: number): number {
+  return Math.floor((numerator + divisor / 2) / divisor);
+}
+
+/** Discount amount (cents) of `discount` applied to a base price (cents). */
+export function discountAmountCents(baseCents: number, discount: Discount): number {
+  if (baseCents <= 0) return 0;
+  const valueCents = toCents(discount.value);
+  if (valueCents <= 0) return 0;
+  let amount =
+    discount.type === "PERCENTAGE"
+      ? roundHalfUpDiv(baseCents * Math.min(valueCents, 10_000), 10_000)
+      : valueCents;
+  if (discount.maxDiscountAmount !== null && discount.maxDiscountAmount !== undefined) {
+    amount = Math.min(amount, toCents(discount.maxDiscountAmount));
+  }
+  return Math.max(0, Math.min(amount, baseCents));
+}
+
+export function discountPercentOf(baseCents: number, discountCents: number): number {
+  if (baseCents <= 0 || discountCents <= 0) return 0;
+  return roundHalfUpDiv(discountCents * 10_000, baseCents) / 100;
+}
+
+/** 3 = product, 2 = category, 1 = store-wide, 0 = does not apply. */
+export function discountScopePriority(discount: Discount, product: PricedProductInput): number {
+  const productId = discount.productId ?? null;
+  const categoryId = discount.categoryId ?? null;
+  if (productId !== null) return productId === product.id ? 3 : 0;
+  if (categoryId !== null) return categoryId === product.categoryId ? 2 : 0;
+  return 1;
+}
+
+function endsAtMs(discount: Discount): number {
+  if (discount.endsAt === undefined) return Number.POSITIVE_INFINITY;
+  const ms = new Date(discount.endsAt).getTime();
+  return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
+}
+
+/** Automatic, enabled and (when the window is known) running at `now`. */
+function isApplicableAutomatic(discount: Discount, now: number): boolean {
+  if (discount.code !== null && discount.code !== undefined) return false;
+  if (discount.isActive === false) return false;
+  if (discount.startsAt !== undefined && new Date(discount.startsAt).getTime() > now) return false;
+  if (discount.endsAt !== undefined && endsAtMs(discount) <= now) return false;
+  return true;
+}
+
 export class FlashSaleService {
   /**
-   * Calculates the effective price for a product based on active discounts.
-   * Priority resolution:
-   * 1. Product-specific discount wins over Category-level discount.
-   * 2. If multiple discounts exist at the winning priority level, the one
-   *    offering the best saving (lowest price) is selected.
-   * 3. Calculates percentage or fixed discount, rounded to 2 decimal places.
-   * 4. Never reduces price below 0.
+   * Effective price of a product given candidate discounts (usually the
+   * result of `getActiveDiscounts`). Coupons, disabled and out-of-window
+   * discounts are ignored defensively.
    */
   calculateEffectivePrice(
-    product: { id: string; categoryId: string; basePrice: string },
-    activeDiscounts: Discount[],
-  ): { effectivePrice: string; discount: Discount | null } {
-    const basePriceNum = Math.max(0, parseFloat(product.basePrice) || 0);
+    product: PricedProductInput,
+    activeDiscounts: readonly Discount[],
+    now: Date = new Date(),
+  ): EffectivePriceResult {
+    const baseCents = Math.max(0, toCents(product.basePrice));
+    const nowMs = now.getTime();
 
-    if (!activeDiscounts || activeDiscounts.length === 0) {
-      return {
-        effectivePrice: basePriceNum.toFixed(2),
-        discount: null,
-      };
-    }
-
-    // Filter discounts that are active
-    const candidates = activeDiscounts.filter((d) => d.isActive !== false);
-
-    const productSpecific = candidates.filter(
-      (d) => d.productId === product.id,
-    );
-    const categorySpecific = candidates.filter(
-      (d) =>
-        (!d.productId || d.productId === null) &&
-        d.categoryId === product.categoryId,
-    );
-
-    // Product-specific discount wins over Category-level discount
-    const pool =
-      productSpecific.length > 0 ? productSpecific : categorySpecific;
-
-    if (pool.length === 0) {
-      return {
-        effectivePrice: basePriceNum.toFixed(2),
-        discount: null,
-      };
-    }
-
-    // When multiple discounts exist at the same level, pick the one offering the best savings
-    let winningDiscount: Discount = pool[0];
-    let bestEffectivePrice = this._calculatePriceForDiscount(
-      basePriceNum,
-      winningDiscount,
-    );
-
-    for (let i = 1; i < pool.length; i++) {
-      const candidatePrice = this._calculatePriceForDiscount(
-        basePriceNum,
-        pool[i],
-      );
-      if (candidatePrice < bestEffectivePrice) {
-        bestEffectivePrice = candidatePrice;
-        winningDiscount = pool[i];
+    let best: { discount: Discount; priority: number; amount: number; endsAt: number } | null = null;
+    for (const discount of activeDiscounts) {
+      if (!isApplicableAutomatic(discount, nowMs)) continue;
+      const priority = discountScopePriority(discount, product);
+      if (priority === 0) continue;
+      const amount = discountAmountCents(baseCents, discount);
+      const endsAt = endsAtMs(discount);
+      const better =
+        best === null ||
+        priority > best.priority ||
+        (priority === best.priority &&
+          (amount > best.amount ||
+            (amount === best.amount &&
+              (endsAt < best.endsAt || (endsAt === best.endsAt && discount.id < best.discount.id)))));
+      if (better) {
+        best = { discount, priority, amount, endsAt };
       }
     }
 
+    const discountCents = best?.amount ?? 0;
+    const effectiveCents = baseCents - discountCents;
     return {
-      effectivePrice: bestEffectivePrice.toFixed(2),
-      discount: winningDiscount,
+      effectivePrice: (effectiveCents / 100).toFixed(2),
+      discount: best?.discount ?? null,
+      basePriceValue: fromCents(baseCents),
+      effectivePriceValue: fromCents(effectiveCents),
+      discountAmount: fromCents(discountCents),
+      discountPercent: discountPercentOf(baseCents, discountCents),
     };
   }
 
-  private _calculatePriceForDiscount(
-    basePrice: number,
-    discount: Discount,
-  ): number {
-    const val = parseFloat(discount.value) || 0;
-    const typeUpper = (discount.type || "").toUpperCase();
-
-    let discountAmount: number;
-    if (typeUpper === "PERCENTAGE") {
-      const pct = Math.max(0, Math.min(val, 100));
-      discountAmount = (basePrice * pct) / 100;
-    } else {
-      discountAmount = Math.max(0, val);
-    }
-
-    return Math.max(0, basePrice - discountAmount);
+  /** Price breakdown for a single known discount (numbers). */
+  computeEffectivePrice(basePrice: number, discount: Discount): EffectivePricing {
+    const baseCents = Math.max(0, toCents(basePrice));
+    const discountCents = discountAmountCents(baseCents, discount);
+    return {
+      effectivePrice: fromCents(baseCents - discountCents),
+      discountAmount: fromCents(discountCents),
+      discountPercent: discountPercentOf(baseCents, discountCents),
+    };
   }
 
   /**
-   * Fetches all currently active discounts from database.
+   * Automatic discounts (code IS NULL) that are enabled and running now.
+   * With `productId` and/or `categoryId` only the discounts that can apply to
+   * that product are returned (product-, category- and store-wide ones).
    */
   async getActiveDiscounts(
     productId?: string,
     categoryId?: string,
+    db: DbExecutor = defaultDb,
   ): Promise<Discount[]> {
     const now = new Date();
-    const conditions = [
+    const conditions: SQL[] = [
+      isNull(discounts.code),
       eq(discounts.isActive, true),
       lte(discounts.startsAt, now),
-      gte(discounts.endsAt, now),
+      gt(discounts.endsAt, now),
     ];
 
-    if (productId && categoryId) {
-      conditions.push(
-        or(
-          eq(discounts.productId, productId),
-          eq(discounts.categoryId, categoryId),
-        )!,
-      );
-    } else if (productId) {
-      conditions.push(eq(discounts.productId, productId));
-    } else if (categoryId) {
-      conditions.push(eq(discounts.categoryId, categoryId));
+    if (productId !== undefined || categoryId !== undefined) {
+      const scopes: SQL[] = [];
+      if (productId !== undefined) scopes.push(eq(discounts.productId, productId));
+      if (categoryId !== undefined) {
+        const categoryScope = and(isNull(discounts.productId), eq(discounts.categoryId, categoryId));
+        if (categoryScope) scopes.push(categoryScope);
+      }
+      const storeWide = and(isNull(discounts.productId), isNull(discounts.categoryId));
+      if (storeWide) scopes.push(storeWide);
+      const scope = or(...scopes);
+      if (scope) conditions.push(scope);
     }
 
-    const rows = await db
+    return db
       .select()
       .from(discounts)
       .where(and(...conditions));
-
-    return rows as Discount[];
   }
 
-  /**
-   * Resolves the single best active discount for a product from the database.
-   */
-  async getActiveDiscount(
-    productId: string,
-    categoryId: string,
-    basePrice: string = "1000.00",
-  ): Promise<Discount | null> {
-    const activeDiscounts = await this.getActiveDiscounts(
-      productId,
-      categoryId,
-    );
-    const result = this.calculateEffectivePrice(
-      { id: productId, categoryId, basePrice },
-      activeDiscounts,
-    );
-    return result.discount;
-  }
-
-  /**
-   * Computes detailed effective price breakdown (numbers).
-   */
-  computeEffectivePrice(
-    basePrice: number,
-    discount: Discount,
-  ): EffectivePricing {
-    const val = parseFloat(discount.value) || 0;
-    const typeUpper = (discount.type || "").toUpperCase();
-
-    let discountAmount: number;
-    if (typeUpper === "PERCENTAGE") {
-      const pct = Math.max(0, Math.min(val, 100));
-      discountAmount = (basePrice * pct) / 100;
-    } else {
-      discountAmount = Math.min(val, basePrice);
-    }
-
-    const effectivePrice = Math.max(0, basePrice - discountAmount);
-    const discountPercent =
-      basePrice > 0
-        ? parseFloat(((discountAmount / basePrice) * 100).toFixed(2))
-        : 0;
-
-    return {
-      effectivePrice: parseFloat(effectivePrice.toFixed(2)),
-      discountAmount: parseFloat(discountAmount.toFixed(2)),
-      discountPercent,
-    };
-  }
-
-  /**
-   * Returns remaining milliseconds for flash sale countdown.
-   */
-  getFlashSaleCountdown(discount: {
-    endsAt?: Date | string | null;
-  }): number {
+  /** Milliseconds until the discount ends (0 when ended or unknown). */
+  getFlashSaleCountdown(discount: { endsAt?: Date | string | null }, now: Date = new Date()): number {
     if (!discount.endsAt) return 0;
-    const remaining = new Date(discount.endsAt).getTime() - Date.now();
-    return Math.max(0, remaining);
+    const remaining = new Date(discount.endsAt).getTime() - now.getTime();
+    return Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
   }
 }
+
+export const flashSaleService = new FlashSaleService();

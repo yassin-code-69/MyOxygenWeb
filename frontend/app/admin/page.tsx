@@ -1,762 +1,399 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
+import { useRouter } from "next/navigation";
 import {
-  Container,
-  Paper,
-  Title,
-  Text,
-  Group,
-  Stack,
-  Button,
-  Table,
+  Anchor,
   Badge,
-  Grid,
   Box,
-  ThemeIcon,
-  Progress,
-  ActionIcon,
-  Tooltip,
+  Card,
+  Grid,
+  Group,
+  SimpleGrid,
   Skeleton,
+  Stack,
+  Table,
+  Text,
+  Tooltip,
 } from "@mantine/core";
 import {
-  IconReceipt2,
-  IconTruckDelivery,
   IconAlertTriangle,
-  IconCalendarTime,
+  IconCash,
+  IconPackage,
+  IconReceipt2,
+  IconShoppingCart,
+  IconTrendingDown,
   IconTrendingUp,
-  IconFileSpreadsheet,
-  IconRefresh,
-  IconArrowUpRight,
-  IconClock,
 } from "@tabler/icons-react";
-import { apiGet } from "../../lib/api-client";
+import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { AdminPageSkeleton } from "../../components/admin/AdminScreens";
+import { DateRangeFilter, isCompleteRange, type DateRange } from "../../components/admin/DateRangeFilter";
+import { ForbiddenPanel } from "../../components/admin/ForbiddenPanel";
+import { KpiCard } from "../../components/admin/KpiCard";
+import { MeterBar } from "../../components/admin/MeterBar";
+import { PageHeader } from "../../components/admin/PageHeader";
+import { QueryError } from "../../components/admin/QueryError";
+import { RevenueChart } from "../../components/admin/RevenueChart";
+import {
+  formatCalendarDate,
+  formatCount,
+  formatDhakaDateTime,
+  formatMoney,
+} from "../../components/admin/format";
+import { useCan } from "../../hooks/admin/use-permission";
+import { useTelemetry } from "../../hooks/admin/use-telemetry";
+import { getAdminHomeHref } from "../../lib/admin-nav";
+import { useAuthStore } from "../../lib/auth-store";
+import { PERMISSIONS } from "../../types/auth";
+import { ADMIN_ORDER_STATUSES, type AdminTelemetrySummary } from "../../types/admin";
 
-export interface OrdersByStatus {
-  PENDING?: number;
-  PROCESSING?: number;
-  SHIPPED?: number;
-  DELIVERED?: number;
-  CANCELLED?: number;
-  [key: string]: number | undefined;
+const MAX_RANGE_DAYS = 366;
+
+function daysInRange([from, to]: DateRange): number {
+  if (!from || !to) {
+    return 0;
+  }
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 }
 
-export interface RecentOrderItem {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  customerPhone?: string;
-  status: string;
-  totalAmount: number;
-  itemsCount?: number;
-  createdAt: string;
-  paymentMethod?: string;
-}
-
-export interface AnalyticsSummary {
-  totalRevenue: number;
-  totalOrders: number;
-  lowStockCount: number;
-  expiringSoonCount: number;
-  revenueTrendPercent?: number;
-  ordersByStatus?: OrdersByStatus;
-  recentOrders?: RecentOrderItem[];
-}
-
-const MOCK_SUMMARY: AnalyticsSummary = {
-  totalRevenue: 584250,
-  totalOrders: 1248,
-  lowStockCount: 7,
-  expiringSoonCount: 4,
-  revenueTrendPercent: 14.8,
-  ordersByStatus: {
-    DELIVERED: 975,
-    SHIPPED: 120,
-    PROCESSING: 86,
-    PENDING: 42,
-    CANCELLED: 25,
-  },
-  recentOrders: [
-    {
-      id: "ord-8419",
-      orderNumber: "ORD-20260922-8419",
-      customerName: "Nusrat Jahan",
-      customerPhone: "01712-345678",
-      itemsCount: 3,
-      status: "PENDING",
-      totalAmount: 3450,
-      createdAt: "12 mins ago",
-      paymentMethod: "Cash on Delivery",
-    },
-    {
-      id: "ord-8418",
-      orderNumber: "ORD-20260922-8418",
-      customerName: "Tanvir Ahmed",
-      customerPhone: "01819-876543",
-      itemsCount: 2,
-      status: "PROCESSING",
-      totalAmount: 1820,
-      createdAt: "35 mins ago",
-      paymentMethod: "bKash Online",
-    },
-    {
-      id: "ord-8417",
-      orderNumber: "ORD-20260922-8417",
-      customerName: "Farhana Islam",
-      customerPhone: "01911-234567",
-      itemsCount: 5,
-      status: "SHIPPED",
-      totalAmount: 5600,
-      createdAt: "1 hour ago",
-      paymentMethod: "Cash on Delivery",
-    },
-    {
-      id: "ord-8416",
-      orderNumber: "ORD-20260922-8416",
-      customerName: "Md. Rafiqul Hassan",
-      customerPhone: "01623-456789",
-      itemsCount: 1,
-      status: "DELIVERED",
-      totalAmount: 2150,
-      createdAt: "3 hours ago",
-      paymentMethod: "bKash Online",
-    },
-    {
-      id: "ord-8415",
-      orderNumber: "ORD-20260922-8415",
-      customerName: "Shamima Nasreen",
-      customerPhone: "01788-990011",
-      itemsCount: 4,
-      status: "PROCESSING",
-      totalAmount: 4100,
-      createdAt: "5 hours ago",
-      paymentMethod: "Nagad",
-    },
-  ],
-};
-
+/** `/admin` — landing page for roles with ANALYTICS_READ; others are sent to their first allowed page. */
 export default function AdminDashboardPage() {
-  const [isLiveTelemetry, setIsLiveTelemetry] = useState(false);
+  const router = useRouter();
+  const role = useAuthStore((state) => state.user?.role ?? null);
+  const canAnalytics = useCan(PERMISSIONS.ANALYTICS_READ);
+  const homeHref = getAdminHomeHref(role);
+  const redirectTo = !canAnalytics && homeHref && homeHref !== "/admin" ? homeHref : null;
 
-  // Fetch telemetry from backend or fallback to mock in dev/unauthenticated
-  const { data, isLoading, mutate, isValidating } = useSWR<AnalyticsSummary>(
-    "/admin/analytics/summary",
-    async (path) => {
-      try {
-        const res = await apiGet<any>(path);
-        const payload = res?.data ?? res;
-        if (payload && typeof payload.totalRevenue === "number") {
-          setIsLiveTelemetry(true);
-          return payload;
-        }
-        setIsLiveTelemetry(false);
-        return MOCK_SUMMARY;
-      } catch {
-        // Fallback for unauthenticated dev environment
-        setIsLiveTelemetry(false);
-        return MOCK_SUMMARY;
-      }
-    },
-    {
-      fallbackData: MOCK_SUMMARY,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
+  useEffect(() => {
+    if (redirectTo) {
+      router.replace(redirectTo);
     }
+  }, [redirectTo, router]);
+
+  if (redirectTo) {
+    return <AdminPageSkeleton />;
+  }
+  if (!canAnalytics) {
+    return <ForbiddenPanel permission={PERMISSIONS.ANALYTICS_READ} />;
+  }
+  return <DashboardView />;
+}
+
+function TrendBadge({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return null;
+  }
+  const up = percent >= 0;
+  const Icon = up ? IconTrendingUp : IconTrendingDown;
+  return (
+    <Tooltip label="Revenue of the last 30 days compared with the 30 days before">
+      <Badge
+        variant="light"
+        color={up ? "success" : "danger"}
+        leftSection={<Icon size={12} aria-hidden />}
+        className="mo-tabular-nums"
+        aria-label={`${up ? "Up" : "Down"} ${Math.abs(percent)}% versus the previous 30 days`}
+      >
+        {up ? "+" : "−"}
+        {Math.abs(percent)}%
+      </Badge>
+    </Tooltip>
   );
+}
 
-  const summary = data || MOCK_SUMMARY;
-  const ordersByStatus = summary.ordersByStatus || MOCK_SUMMARY.ordersByStatus!;
-  const recentOrders = summary.recentOrders || MOCK_SUMMARY.recentOrders!;
+function DashboardView() {
+  const [range, setRange] = useState<DateRange>([null, null]);
+  const [appliedRange, setAppliedRange] = useState<DateRange>([null, null]);
+  const rangeDays = daysInRange(appliedRange);
+  const { data, error, isLoading, isValidating, mutate } = useTelemetry({ from: appliedRange[0], to: appliedRange[1] });
+  const canOrders = useCan(PERMISSIONS.ORDERS_READ);
+  const canProducts = useCan(PERMISSIONS.PRODUCTS_READ);
+  const canBatches = useCan(PERMISSIONS.BATCHES_MANAGE);
+  const rangeTooLong = daysInRange(range) > MAX_RANGE_DAYS;
 
-  // Calculate order status distribution percentages
-  const delivered = ordersByStatus.DELIVERED || 0;
-  const shipped = ordersByStatus.SHIPPED || 0;
-  const processing = ordersByStatus.PROCESSING || 0;
-  const pending = ordersByStatus.PENDING || 0;
-  const totalTrackedOrders = delivered + shipped + processing + pending || 1;
+  const handleRangeChange = (next: DateRange) => {
+    setRange(next);
+    if (isCompleteRange(next) && daysInRange(next) <= MAX_RANGE_DAYS) {
+      setAppliedRange(next);
+    }
+  };
 
-  const pctDelivered = Math.round((delivered / totalTrackedOrders) * 100);
-  const pctShipped = Math.round((shipped / totalTrackedOrders) * 100);
-  const pctProcessing = Math.round((processing / totalTrackedOrders) * 100);
-  const pctPending = Math.max(0, 100 - pctDelivered - pctShipped - pctProcessing);
+  const periodLabel =
+    appliedRange[0] && appliedRange[1]
+      ? `${formatCalendarDate(appliedRange[0])} – ${formatCalendarDate(appliedRange[1])}`
+      : "Last 30 days";
+  const totalsLabel = appliedRange[0] ? `${formatCount(rangeDays)}-day range` : "All time";
+  const loading = isLoading && !data;
 
   return (
-    <Container size="xl" py="sm" px={{ base: "xs", sm: "md" }}>
-      {/* Top Title & Header Actions */}
-      <Stack gap="lg" mb="xl">
-        <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+    <Stack gap="lg">
+      <PageHeader
+        title="Dashboard"
+        description="Sales and stock at a glance. Revenue excludes cancelled and refunded orders and includes delivery fees. Times are in Dhaka (GMT+6)."
+        actions={
           <Box>
-            <Group gap="xs" align="center" mb={4}>
-              <Title
-                order={2}
-                fw={800}
-                c="#1F2937"
-                style={{ letterSpacing: "-0.5px" }}
-              >
-                Analytics & Operations Dashboard
-              </Title>
-              <Badge
-                variant="dot"
-                color={isLiveTelemetry ? "green" : "yellow"}
-                size="sm"
-                radius="xl"
-              >
-                {isLiveTelemetry ? "Live Telemetry" : "Dev Mock Telemetry"}
-              </Badge>
-            </Group>
-            <Text size="sm" c="#6B7280">
-              Real-time sales performance, perishable batch safety, and fulfillment operations.
-            </Text>
-          </Box>
-
-          {/* Quick Action Buttons */}
-          <Group gap="sm" wrap="wrap">
-            <Tooltip label="Refresh Analytics" position="bottom">
-              <ActionIcon
-                variant="light"
-                color="gray"
-                size="lg"
-                radius="md"
-                loading={isValidating}
-                onClick={() => mutate()}
-                aria-label="Refresh telemetry data"
-              >
-                <IconRefresh size={18} />
-              </ActionIcon>
-            </Tooltip>
-
-            <Button
-              component={Link}
-              href="/admin/batches"
-              leftSection={<IconCalendarTime size={18} stroke={2} />}
-              variant="outline"
-              color="pink"
-              radius="md"
-              style={{
-                borderColor: "#FF6B8B",
-                color: "#FF6B8B",
-                backgroundColor: "#FFFFFF",
-                fontWeight: 650,
-              }}
-            >
-              Inspect Batches
-            </Button>
-
-            <Button
-              component={Link}
-              href="/admin/orders"
-              leftSection={<IconTruckDelivery size={18} stroke={2} />}
-              radius="md"
-              style={{
-                backgroundColor: "#FF6B8B",
-                color: "#FFFFFF",
-                fontWeight: 650,
-                boxShadow: "0 2px 8px rgba(255, 107, 139, 0.28)",
-              }}
-            >
-              Manage Orders
-            </Button>
-
-            <Button
-              component={Link}
-              href="/admin/ledger"
-              leftSection={<IconFileSpreadsheet size={18} stroke={2} />}
-              variant="light"
-              color="gray"
-              radius="md"
-              style={{
-                backgroundColor: "#FFFFFF",
-                color: "#374151",
-                border: "1px solid #E5E7EB",
-                fontWeight: 650,
-              }}
-            >
-              View Stock Ledger
-            </Button>
-          </Group>
-        </Group>
-
-        {/* 4-Column Mantine Grid for Telemetry Metrics */}
-        <Grid gap="lg">
-          {/* Card 1: Total Revenue */}
-          <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-            <Paper
-              p="lg"
-              radius="lg"
-              style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #F3F4F6",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-                position: "relative",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              <Box>
-                <Group justify="space-between" align="flex-start" mb="xs">
-                  <Text size="xs" fw={700} c="#6B7280" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Total Revenue
-                  </Text>
-                  <ThemeIcon
-                    size={38}
-                    radius="md"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(76, 175, 125, 0.15) 0%, rgba(76, 175, 125, 0.25) 100%)",
-                      color: "#4CAF7D",
-                    }}
-                  >
-                    <IconReceipt2 size={20} stroke={2} />
-                  </ThemeIcon>
-                </Group>
-
-                {isLoading ? (
-                  <Skeleton height={36} width="65%" mb="xs" />
-                ) : (
-                  <Text fw={850} size="28px" c="#1F2937" style={{ lineHeight: 1.15 }}>
-                    ৳ {summary.totalRevenue.toLocaleString()}
-                  </Text>
-                )}
-              </Box>
-
-              <Box mt="md">
-                <Group gap={6} align="center">
-                  <Badge
-                    color="green"
-                    variant="light"
-                    size="sm"
-                    radius="xl"
-                    leftSection={<IconTrendingUp size={12} stroke={2.5} />}
-                    style={{
-                      backgroundColor: "rgba(16, 185, 129, 0.12)",
-                      color: "#10B981",
-                      fontWeight: 700,
-                    }}
-                  >
-                    +{summary.revenueTrendPercent || 14.8}% vs last month
-                  </Badge>
-                </Group>
-                <Text size="11px" c="#9CA3AF" mt={4}>
-                  Completed and paid transactions
-                </Text>
-              </Box>
-            </Paper>
-          </Grid.Col>
-
-          {/* Card 2: Total Orders */}
-          <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-            <Paper
-              p="lg"
-              radius="lg"
-              style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #F3F4F6",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-                position: "relative",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              <Box>
-                <Group justify="space-between" align="flex-start" mb="xs">
-                  <Text size="xs" fw={700} c="#6B7280" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Total Orders
-                  </Text>
-                  <ThemeIcon
-                    size={38}
-                    radius="md"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0.22) 100%)",
-                      color: "#2563EB",
-                    }}
-                  >
-                    <IconTruckDelivery size={20} stroke={2} />
-                  </ThemeIcon>
-                </Group>
-
-                {isLoading ? (
-                  <Skeleton height={36} width="50%" mb="xs" />
-                ) : (
-                  <Text fw={850} size="28px" c="#1F2937" style={{ lineHeight: 1.15 }}>
-                    {summary.totalOrders.toLocaleString()}
-                  </Text>
-                )}
-              </Box>
-
-              <Box mt="xs">
-                {/* Progress bar by status */}
-                <Progress.Root size="sm" radius="xl" mt={4}>
-                  <Tooltip label={`Delivered: ${delivered} (${pctDelivered}%)`}>
-                    <Progress.Section value={pctDelivered} color="green" />
-                  </Tooltip>
-                  <Tooltip label={`Shipped: ${shipped} (${pctShipped}%)`}>
-                    <Progress.Section value={pctShipped} color="cyan" />
-                  </Tooltip>
-                  <Tooltip label={`Processing: ${processing} (${pctProcessing}%)`}>
-                    <Progress.Section value={pctProcessing} color="blue" />
-                  </Tooltip>
-                  <Tooltip label={`Pending: ${pending} (${pctPending}%)`}>
-                    <Progress.Section value={pctPending} color="yellow" />
-                  </Tooltip>
-                </Progress.Root>
-
-                <Group justify="space-between" mt={6} style={{ fontSize: "11px", color: "#6B7280" }}>
-                  <Text size="11px" c="green" fw={600}>
-                    {delivered} Delivered
-                  </Text>
-                  <Text size="11px" c="blue" fw={600}>
-                    {processing} Processing
-                  </Text>
-                  <Text size="11px" c="#D97706" fw={600}>
-                    {pending} Pending
-                  </Text>
-                </Group>
-              </Box>
-            </Paper>
-          </Grid.Col>
-
-          {/* Card 3: Low Stock Warnings */}
-          <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-            <Paper
-              p="lg"
-              radius="lg"
-              style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #FEF3C7",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-                position: "relative",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              <Box>
-                <Group justify="space-between" align="flex-start" mb="xs">
-                  <Text size="xs" fw={700} c="#92400E" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Low Stock Warnings
-                  </Text>
-                  <ThemeIcon
-                    size={38}
-                    radius="md"
-                    style={{
-                      background: "rgba(245, 158, 11, 0.15)",
-                      color: "#F59E0B",
-                    }}
-                  >
-                    <IconAlertTriangle size={20} stroke={2} />
-                  </ThemeIcon>
-                </Group>
-
-                {isLoading ? (
-                  <Skeleton height={36} width="40%" mb="xs" />
-                ) : (
-                  <Text fw={850} size="28px" c="#B45309" style={{ lineHeight: 1.15 }}>
-                    {summary.lowStockCount}
-                  </Text>
-                )}
-              </Box>
-
-              <Box mt="md">
-                <Group gap={6} align="center">
-                  <Badge
-                    size="sm"
-                    radius="xl"
-                    style={{
-                      backgroundColor: "rgba(245, 158, 11, 0.18)",
-                      color: "#F59E0B",
-                      border: "1px solid rgba(245, 158, 11, 0.35)",
-                      fontWeight: 750,
-                      letterSpacing: "0.4px",
-                    }}
-                  >
-                    #F59E0B Warning Yellow
-                  </Badge>
-                </Group>
-                <Text size="11px" c="#9CA3AF" mt={4}>
-                  Items at or below safety threshold
-                </Text>
-              </Box>
-            </Paper>
-          </Grid.Col>
-
-          {/* Card 4: Expiring Batches (≤30 Days) */}
-          <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-            <Paper
-              p="lg"
-              radius="lg"
-              style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #FEE2E2",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-                position: "relative",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              <Box>
-                <Group justify="space-between" align="flex-start" mb="xs">
-                  <Text size="xs" fw={700} c="#991B1B" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Expiring Batches (≤30 Days)
-                  </Text>
-                  <ThemeIcon
-                    size={38}
-                    radius="md"
-                    style={{
-                      background: "rgba(239, 68, 68, 0.15)",
-                      color: "#EF4444",
-                    }}
-                  >
-                    <IconCalendarTime size={20} stroke={2} />
-                  </ThemeIcon>
-                </Group>
-
-                {isLoading ? (
-                  <Skeleton height={36} width="40%" mb="xs" />
-                ) : (
-                  <Text fw={850} size="28px" c="#DC2626" style={{ lineHeight: 1.15 }}>
-                    {summary.expiringSoonCount}
-                  </Text>
-                )}
-              </Box>
-
-              <Box mt="md">
-                <Group gap={6} align="center">
-                  <Badge
-                    size="sm"
-                    radius="xl"
-                    style={{
-                      backgroundColor: "rgba(239, 68, 68, 0.18)",
-                      color: "#EF4444",
-                      border: "1px solid rgba(239, 68, 68, 0.35)",
-                      fontWeight: 750,
-                      letterSpacing: "0.4px",
-                    }}
-                  >
-                    #EF4444 Error Red
-                  </Badge>
-                </Group>
-                <Text size="11px" c="#9CA3AF" mt={4}>
-                  Perishable batches requiring FEFO discount
-                </Text>
-              </Box>
-            </Paper>
-          </Grid.Col>
-        </Grid>
-
-        {/* Action Callouts Banner */}
-        <Paper
-          p="md"
-          radius="lg"
-          style={{
-            backgroundColor: "#FFFFFF",
-            border: "1px solid #FEE2E2",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.02)",
-          }}
-        >
-          <Grid align="center" gap="md">
-            <Grid.Col span={{ base: 12, md: 8 }}>
-              <Group gap="sm" align="flex-start">
-                <ThemeIcon size={36} radius="md" style={{ backgroundColor: "#FFF0F3", color: "#FF6B8B" }}>
-                  <IconClock size={20} />
-                </ThemeIcon>
-                <Box>
-                  <Text size="sm" fw={700} c="#1F2937">
-                    FEFO Batch Expiry & Reorder Priority
-                  </Text>
-                  <Text size="xs" c="#6B7280">
-                    {summary.expiringSoonCount} perishable batches require clearance action within 30 days. {summary.lowStockCount} inventory items reached safety reorder levels.
-                  </Text>
-                </Box>
-              </Group>
-            </Grid.Col>
-
-            <Grid.Col span={{ base: 12, md: 4 }}>
-              <Group justify="flex-end" gap="xs">
-                <Button
-                  component={Link}
-                  href="/admin/batches"
-                  size="xs"
-                  variant="filled"
-                  style={{ backgroundColor: "#FF6B8B", color: "#FFFFFF", fontWeight: 600 }}
-                >
-                  Review Batches
-                </Button>
-                <Button
-                  component={Link}
-                  href="/admin/ledger"
-                  size="xs"
-                  variant="default"
-                  style={{ fontWeight: 600 }}
-                >
-                  Audit Ledger
-                </Button>
-              </Group>
-            </Grid.Col>
-          </Grid>
-        </Paper>
-
-        {/* Recent Orders Preview Table */}
-        <Paper
-          radius="lg"
-          style={{
-            backgroundColor: "#FFFFFF",
-            border: "1px solid #F3F4F6",
-            boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
-            overflow: "hidden",
-          }}
-        >
-          {/* Table Header Section */}
-          <Group justify="space-between" align="center" p="lg" style={{ borderBottom: "1px solid #F3F4F6" }}>
-            <Box>
-              <Title order={4} fw={750} c="#1F2937">
-                Recent Orders Preview
-              </Title>
-              <Text size="xs" c="#6B7280">
-                Latest customer purchases requiring order fulfillment and dispatch
+            <DateRangeFilter value={range} onChange={handleRangeChange} placeholder="All time" width={280} />
+            {rangeTooLong ? (
+              <Text size="xs" c="var(--mantine-color-error)" mt={4}>
+                Pick a range of {MAX_RANGE_DAYS} days or less.
               </Text>
+            ) : null}
+          </Box>
+        }
+      />
+
+      {error && !data ? <QueryError error={error} onRetry={() => void mutate()} permission={PERMISSIONS.ANALYTICS_READ} /> : null}
+
+      <SimpleGrid cols={{ base: 1, xs: 2, md: 3, xl: 5 }} spacing="md">
+        <KpiCard
+          label="Revenue"
+          value={data ? formatMoney(data.totalRevenue) : "—"}
+          icon={<IconCash size={18} />}
+          color="primaryPink"
+          badge={data ? <TrendBadge percent={data.revenueTrendPercent} /> : null}
+          hint={data ? `${totalsLabel} · from ${formatCount(data.revenueOrderCount)} orders` : totalsLabel}
+          loading={loading}
+        />
+        <KpiCard
+          label="Orders"
+          value={data ? formatCount(data.totalOrders) : "—"}
+          icon={<IconShoppingCart size={18} />}
+          color="info"
+          hint={totalsLabel}
+          href={canOrders ? "/admin/orders" : undefined}
+          linkLabel="View orders"
+          loading={loading}
+        />
+        <KpiCard
+          label="Average order"
+          value={data ? formatMoney(data.avgOrderValue) : "—"}
+          icon={<IconReceipt2 size={18} />}
+          color="accentPurple"
+          hint="Revenue ÷ revenue orders"
+          loading={loading}
+        />
+        <KpiCard
+          label="Low stock"
+          value={data ? formatCount(data.lowStockCount) : "—"}
+          icon={<IconPackage size={18} />}
+          color="warning"
+          hint="At or below their alert level"
+          href={canProducts ? "/admin/products?stock=low" : undefined}
+          linkLabel="Review"
+          loading={loading}
+        />
+        <KpiCard
+          label="Expiring soon"
+          value={data ? formatCount(data.expiringSoonCount) : "—"}
+          icon={<IconAlertTriangle size={18} />}
+          color="danger"
+          hint="Batches with stock, ≤ 30 days left"
+          href={canBatches ? "/admin/batches?status=EXPIRING_SOON" : undefined}
+          linkLabel="Inspect"
+          loading={loading}
+        />
+      </SimpleGrid>
+
+      <Grid gap="md">
+        <Grid.Col span={{ base: 12, lg: 8 }}>
+          <RevenueChart data={data?.dailyRevenue} loading={loading || (isValidating && !data)} periodLabel={periodLabel} />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, lg: 4 }}>
+          <OrdersByStatusCard data={data} loading={loading} canOrders={canOrders} label={totalsLabel} />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, lg: 7 }}>
+          <RecentOrdersCard data={data} loading={loading} canOrders={canOrders} />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, lg: 5 }}>
+          <TopProductsCard data={data} loading={loading} canProducts={canProducts} label={totalsLabel} />
+        </Grid.Col>
+      </Grid>
+    </Stack>
+  );
+}
+
+interface CardProps {
+  data: AdminTelemetrySummary | undefined;
+  loading: boolean;
+}
+
+function OrdersByStatusCard({ data, loading, canOrders, label }: CardProps & { canOrders: boolean; label: string }) {
+  const total = data ? ADMIN_ORDER_STATUSES.reduce((sum, status) => sum + (data.ordersByStatus[status] ?? 0), 0) : 0;
+  return (
+    <Card withBorder padding="lg" h="100%">
+      <Text fw={700} ff="var(--mo-font-heading)">
+        Orders by status
+      </Text>
+      <Text size="xs" c="dimmed" mb="md">
+        {label} · {formatCount(total)} orders
+      </Text>
+      <Stack gap="sm">
+        {ADMIN_ORDER_STATUSES.map((status) => {
+          const count = data?.ordersByStatus[status] ?? 0;
+          return (
+            <Box key={status}>
+              <Group justify="space-between" mb={4} wrap="nowrap">
+                {canOrders ? (
+                  <Anchor component={Link} href={`/admin/orders?status=${status}`} underline="never" aria-label={`View ${status.toLowerCase()} orders`}>
+                    <StatusBadge status={status} size="sm" />
+                  </Anchor>
+                ) : (
+                  <StatusBadge status={status} size="sm" />
+                )}
+                {loading ? (
+                  <Skeleton height={12} width={36} radius="xl" />
+                ) : (
+                  <Text size="sm" fw={600} className="mo-tabular-nums">
+                    {formatCount(count)}
+                  </Text>
+                )}
+              </Group>
+              <MeterBar ratio={total > 0 ? count / total : 0} color="gray" height={6} />
             </Box>
-
-            <Button
-              component={Link}
-              href="/admin/orders"
-              size="xs"
-              variant="subtle"
-              color="pink"
-              rightSection={<IconArrowUpRight size={14} />}
-              style={{ fontWeight: 650, color: "#FF6B8B" }}
-            >
-              Manage All Orders
-            </Button>
-          </Group>
-
-          {/* Table Content */}
-          <Table.ScrollContainer minWidth={720}>
-            <Table verticalSpacing="sm" horizontalSpacing="lg" highlightOnHover>
-              <Table.Thead style={{ backgroundColor: "#F9FAFB" }}>
-                <Table.Tr>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase" }}>
-                    Order Number
-                  </Table.Th>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase" }}>
-                    Customer
-                  </Table.Th>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase" }}>
-                    Time / Placed
-                  </Table.Th>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase" }}>
-                    Status
-                  </Table.Th>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase", textAlign: "right" }}>
-                    Total Amount
-                  </Table.Th>
-                  <Table.Th style={{ color: "#4B5563", fontSize: "12px", textTransform: "uppercase", textAlign: "right" }}>
-                    Action
-                  </Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {recentOrders.map((order) => (
-                  <Table.Tr key={order.id || order.orderNumber} style={{ transition: "background 0.15s ease" }}>
-                    {/* Order Number */}
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ThemeIcon size={26} radius="sm" variant="light" color="pink" style={{ backgroundColor: "#FFF0F3", color: "#FF6B8B" }}>
-                          <IconReceipt2 size={14} />
-                        </ThemeIcon>
-                        <Box>
-                          <Text
-                            component={Link}
-                            href="/admin/orders"
-                            fw={700}
-                            size="sm"
-                            c="#1F2937"
-                            style={{
-                              textDecoration: "none",
-                              fontFamily: "monospace",
-                              letterSpacing: "-0.3px",
-                            }}
-                          >
-                            {order.orderNumber}
-                          </Text>
-                          {order.paymentMethod && (
-                            <Text size="11px" c="#9CA3AF">
-                              {order.paymentMethod}
-                            </Text>
-                          )}
-                        </Box>
-                      </Group>
-                    </Table.Td>
-
-                    {/* Customer Info */}
-                    <Table.Td>
-                      <Text size="sm" fw={600} c="#1F2937">
-                        {order.customerName}
-                      </Text>
-                      {order.customerPhone && (
-                        <Text size="11px" c="#6B7280">
-                          {order.customerPhone}
-                        </Text>
-                      )}
-                    </Table.Td>
-
-                    {/* Time / Placed */}
-                    <Table.Td>
-                      <Text size="xs" c="#6B7280">
-                        {order.createdAt}
-                      </Text>
-                      {order.itemsCount && (
-                        <Text size="11px" c="#9CA3AF">
-                          {order.itemsCount} {order.itemsCount === 1 ? "item" : "items"}
-                        </Text>
-                      )}
-                    </Table.Td>
-
-                    {/* Status Badge */}
-                    <Table.Td>
-                      <StatusBadge status={order.status} size="sm" />
-                    </Table.Td>
-
-                    {/* Total */}
-                    <Table.Td style={{ textAlign: "right" }}>
-                      <Text fw={750} size="sm" c="#1F2937">
-                        ৳ {order.totalAmount.toLocaleString()}
-                      </Text>
-                    </Table.Td>
-
-                    {/* Action */}
-                    <Table.Td style={{ textAlign: "right" }}>
-                      <Button
-                        component={Link}
-                        href="/admin/orders"
-                        size="compact-xs"
-                        variant="light"
-                        color="pink"
-                        style={{
-                          backgroundColor: "#FFF0F3",
-                          color: "#FF6B8B",
-                          fontWeight: 650,
-                          borderRadius: "6px",
-                        }}
-                      >
-                        Manage
-                      </Button>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Paper>
+          );
+        })}
       </Stack>
-    </Container>
+    </Card>
+  );
+}
+
+function RecentOrdersCard({ data, loading, canOrders }: CardProps & { canOrders: boolean }) {
+  return (
+    <Card withBorder padding="lg" h="100%">
+      <Group justify="space-between" mb="sm">
+        <Box>
+          <Text fw={700} ff="var(--mo-font-heading)">
+            Recent orders
+          </Text>
+          <Text size="xs" c="dimmed">
+            The five newest orders
+          </Text>
+        </Box>
+        {canOrders ? (
+          <Anchor component={Link} href="/admin/orders" size="sm" fw={600}>
+            All orders
+          </Anchor>
+        ) : null}
+      </Group>
+      {loading ? (
+        <Stack gap="sm">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} height={36} radius="md" />
+          ))}
+        </Stack>
+      ) : null}
+      {data && data.recentOrders.length === 0 ? (
+        <EmptyState withCard={false} size="sm" title="No orders yet" description="New orders appear here as soon as customers check out." />
+      ) : null}
+      {data && data.recentOrders.length > 0 ? (
+        <Table.ScrollContainer minWidth={520} type="native">
+          <Table verticalSpacing="xs" aria-label="Recent orders">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th scope="col">Order</Table.Th>
+                <Table.Th scope="col">Customer</Table.Th>
+                <Table.Th scope="col">Status</Table.Th>
+                <Table.Th scope="col" ta="right">
+                  Total
+                </Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.recentOrders.map((order) => (
+                <Table.Tr key={order.id}>
+                  <Table.Td>
+                    {canOrders ? (
+                      <Anchor component={Link} href={`/admin/orders?q=${encodeURIComponent(order.orderNumber)}`} size="sm" fw={600} ff="var(--mo-font-monospace)">
+                        {order.orderNumber}
+                      </Anchor>
+                    ) : (
+                      <Text size="sm" fw={600} ff="var(--mo-font-monospace)">
+                        {order.orderNumber}
+                      </Text>
+                    )}
+                    <Text size="xs" c="dimmed">
+                      {formatDhakaDateTime(order.createdAt)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{order.customerName}</Text>
+                    <Text size="xs" c="dimmed">
+                      {order.customerPhone} · {formatCount(order.itemCount)} {order.itemCount === 1 ? "item" : "items"}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <StatusBadge status={order.status} size="sm" />
+                  </Table.Td>
+                  <Table.Td ta="right">
+                    <Text size="sm" fw={600} className="mo-tabular-nums">
+                      {formatMoney(order.total)}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      ) : null}
+    </Card>
+  );
+}
+
+function TopProductsCard({ data, loading, canProducts, label }: CardProps & { canProducts: boolean; label: string }) {
+  const topRevenue = data?.topProducts[0]?.revenue ?? 0;
+  return (
+    <Card withBorder padding="lg" h="100%">
+      <Text fw={700} ff="var(--mo-font-heading)">
+        Top products
+      </Text>
+      <Text size="xs" c="dimmed" mb="md">
+        {label} · by revenue
+      </Text>
+      {loading ? (
+        <Stack gap="md">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} height={40} radius="md" />
+          ))}
+        </Stack>
+      ) : null}
+      {data && data.topProducts.length === 0 ? (
+        <EmptyState withCard={false} size="sm" title="No sales yet" description="Best sellers appear once orders come in for this period." />
+      ) : null}
+      {data && data.topProducts.length > 0 ? (
+        <Stack gap="md" component="ol" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {data.topProducts.map((product, index) => (
+            <Box component="li" key={product.productId}>
+              <Group justify="space-between" wrap="nowrap" gap="sm" mb={4}>
+                <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Badge variant="light" color="gray" size="sm" circle>
+                    {index + 1}
+                  </Badge>
+                  <Box style={{ minWidth: 0 }}>
+                    {canProducts ? (
+                      <Anchor component={Link} href={`/admin/products?q=${encodeURIComponent(product.sku)}`} size="sm" fw={600} lineClamp={1}>
+                        {product.title}
+                      </Anchor>
+                    ) : (
+                      <Text size="sm" fw={600} lineClamp={1}>
+                        {product.title}
+                      </Text>
+                    )}
+                    <Text size="xs" c="dimmed">
+                      {product.sku} · {formatCount(product.unitsSold)} sold
+                    </Text>
+                  </Box>
+                </Group>
+                <Text size="sm" fw={600} className="mo-tabular-nums" style={{ whiteSpace: "nowrap" }}>
+                  {formatMoney(product.revenue)}
+                </Text>
+              </Group>
+              <MeterBar ratio={topRevenue > 0 ? product.revenue / topRevenue : 0} color="secondaryGreen" height={6} />
+            </Box>
+          ))}
+        </Stack>
+      ) : null}
+    </Card>
   );
 }

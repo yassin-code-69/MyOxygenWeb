@@ -1,0 +1,145 @@
+/*
+ * Mobile storefront header (< 48em = 768px), SPECIFICATION §4:
+ * peach top bar → sticky floating search pill → circular category strip.
+ * The search row is a separate sticky element so it stays reachable while the
+ * peach bar and the strip scroll away.
+ */
+
+.topBar {
+  padding: 12px 16px 6px;
+  background: var(--mo-gradient-peach);
+}
+
+.location {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--mo-color-text);
+}
+
+.reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--mo-color-border-brand);
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--mo-color-text-secondary);
+  cursor: not-allowed;
+}
+
+.searchRow {
+  position: sticky;
+  top: 0;
+  z-index: var(--mo-z-header);
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 10px;
+  background: var(--mo-tint-peach);
+}
+
+/* Shadow layer — fades in once the page scrolls (opacity only). */
+.searchRow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  box-shadow: var(--mo-shadow-navbar);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--mo-duration-moderate) var(--mo-ease-out);
+}
+
+.searchRow[data-scrolled]::after {
+  opacity: 1;
+}
+
+.gridAction {
+  flex-shrink: 0;
+  border: 1.5px solid var(--mo-color-border-brand);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+}
+
+.strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 16px 14px;
+  background: linear-gradient(180deg, var(--mo-tint-peach) 0%, var(--mo-color-canvas) 100%);
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.stripItem {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  width: 68px;
+  color: var(--mo-color-text);
+  text-decoration: none;
+  scroll-snap-align: start;
+}
+
+.stripIcon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border: 2px solid var(--mo-color-surface);
+  border-radius: 50%;
+  box-shadow: var(--mo-shadow-sm);
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.stripItem:active .stripIcon {
+  transform: scale(0.94);
+}
+
+.stripLabel {
+  width: 100%;
+  overflow: hidden;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stripItem[data-active] .stripLabel {
+  color: var(--mo-color-text-brand);
+}
+
+.stripItem[data-active] .stripIcon {
+  border-color: var(--mo-color-primary-6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searchRow::after,
+  .stripIcon {
+    transition: none;
+  }
+}

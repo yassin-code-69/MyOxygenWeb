@@ -1,289 +1,187 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import {
-  Container,
-  Title,
-  Group,
-  Text,
-  SimpleGrid,
-  Card,
-  Image,
-  ActionIcon,
-  Button,
-  Rating,
-  Box,
-} from "@mantine/core";
-import { IconHeart, IconArrowRight } from "@tabler/icons-react";
-import { myOxygenColors } from "../tokens";
-import { useCartStore } from "../lib/cart-store";
-import { notifications } from "@mantine/notifications";
+import { Anchor, Container, Group, UnstyledButton } from "@mantine/core";
+import { AnimatePresence, motion } from "motion/react";
+import { IconArrowRight, IconRefresh } from "@tabler/icons-react";
+import { AnimatedSection } from "./AnimatedSection";
+import { BrandButton } from "./BrandButton";
+import { EmptyState } from "./EmptyState";
+import { PRODUCT_CARD_IMAGE_SIZES, ProductCard } from "./ProductCard";
+import { ProductCardSkeleton } from "./ProductCardSkeleton";
+import { SectionHeader } from "./SectionHeader";
+import { toProductCardData } from "./catalog/product-mappers";
+import { rankShowcaseCategories } from "./storefront/category-visuals";
+import { fadeInUp, staggerContainer, transitions } from "../lib/animations";
+import { useProducts } from "../hooks/use-products";
+import { useAddToCart } from "../hooks/catalog/use-add-to-cart";
+import { useCategories } from "../hooks/catalog/use-categories";
+import classes from "./storefront/FeaturedProducts.module.css";
 
-interface MockProduct {
-  id: string;
-  title: string;
-  category: string;
-  categorySlug: string;
-  price: number;
-  rating: number;
-  reviewsCount: number;
-  image: string;
+const ALL_TAB = "all";
+const MAX_CATEGORY_TABS = 4;
+const FEATURED_COUNT = 4;
+
+interface FeaturedTab {
+  value: string;
+  label: string;
 }
 
-const mockFeaturedProducts: MockProduct[] = [
-  {
-    id: "prod-diaper-1",
-    title: "Baby Diaper",
-    category: "Newborn",
-    categorySlug: "newborn",
-    price: 850,
-    rating: 4.8,
-    reviewsCount: 124,
-    image: "/images/prod-diaper.svg",
-  },
-  {
-    id: "prod-vitamin-2",
-    title: "Pregnancy Vitamin",
-    category: "Mother Care",
-    categorySlug: "mother-care",
-    price: 1250,
-    rating: 4.9,
-    reviewsCount: 98,
-    image: "/images/prod-vitamins.svg",
-  },
-  {
-    id: "prod-facewash-3",
-    title: "Face Wash (Skin Care)",
-    category: "Skin Care",
-    categorySlug: "skin-care",
-    price: 650,
-    rating: 4.7,
-    reviewsCount: 76,
-    image: "/images/prod-facewash.svg",
-  },
-  {
-    id: "prod-bra-4",
-    title: "Comfort Bra",
-    category: "Inner Wear",
-    categorySlug: "inner-wear",
-    price: 1100,
-    rating: 4.9,
-    reviewsCount: 87,
-    image: "/images/prod-bra.jpg",
-  },
-];
-
-const categoryTabs = ["Newborn", "Mother Care", "Skin Care", "Inner Wear"];
-
+/**
+ * "Featured products" rail: best sellers (`sort=popular`) from the API, filterable by
+ * real categories. Tabs follow the WAI-ARIA tabs pattern (arrow keys move focus); the
+ * active pill slides with a `layoutId` transition and the grid cross-fades with
+ * `AnimatePresence`, showing skeletons while a tab's products load.
+ */
 export function FeaturedProducts() {
-  const [activeTab, setActiveTab] = useState<string>("Newborn");
-  const [wishlist, setWishlist] = useState<Record<string, boolean>>({});
-  const addItem = useCartStore((state) => state.addItem);
+  const baseId = useId();
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const addToCart = useAddToCart();
+  const { categories } = useCategories();
 
-  const toggleWishlist = (id: string) => {
-    setWishlist((prev) => ({ ...prev, [id]: !prev[id] }));
+  const tabs: FeaturedTab[] = [
+    { value: ALL_TAB, label: "All" },
+    ...rankShowcaseCategories(categories)
+      .slice(0, MAX_CATEGORY_TABS)
+      .map((category) => ({ value: category.slug, label: category.name })),
+  ];
+
+  const { products, isLoading, error, mutate } = useProducts({
+    category: activeTab === ALL_TAB ? null : activeTab,
+    sort: "popular",
+    limit: FEATURED_COUNT,
+  });
+
+  const panelId = `${baseId}-panel`;
+  const tabId = (value: string) => `${baseId}-tab-${value}`;
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const index = tabs.findIndex((tab) => tab.value === activeTab);
+    let next = index;
+    if (event.key === "ArrowRight") {
+      next = (index + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft") {
+      next = (index - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    setActiveTab(tabs[next].value);
+    tabRefs.current[next]?.focus();
   };
 
-  const handleAddToCart = (prod: MockProduct) => {
-    addItem({
-      id: prod.id,
-      title: prod.title,
-      slug: prod.id,
-      unitPrice: prod.price,
-      image: prod.image,
-    });
-    notifications.show({
-      title: "Added to Cart",
-      message: `${prod.title} (৳ ${prod.price.toLocaleString()}) has been added.`,
-      color: "pink",
-    });
-  };
+  let panel: ReactNode;
+  if (isLoading) {
+    panel = (
+      <div className={classes.grid} aria-busy="true">
+        <ProductCardSkeleton count={FEATURED_COUNT} />
+      </div>
+    );
+  } else if (error) {
+    panel = (
+      <EmptyState
+        title="Products could not be loaded"
+        description="Please check your connection and try again."
+        action={
+          <BrandButton variant="outline" leftSection={<IconRefresh size={16} aria-hidden />} onClick={() => mutate()}>
+            Retry
+          </BrandButton>
+        }
+      />
+    );
+  } else if (products.length === 0) {
+    panel = (
+      <EmptyState
+        title="Nothing here yet"
+        description="New products for this category are on their way."
+        action={
+          <BrandButton component={Link} href="/products" variant="outline">
+            Browse all products
+          </BrandButton>
+        }
+      />
+    );
+  } else {
+    panel = (
+      <motion.ul className={classes.grid} variants={staggerContainer} initial="initial" animate="animate">
+        {products.map((product) => (
+          <motion.li key={product.id} variants={fadeInUp} layout="position">
+            <ProductCard
+              product={toProductCardData(product)}
+              sizes={PRODUCT_CARD_IMAGE_SIZES}
+              onAddToCart={() => {
+                addToCart(product);
+              }}
+            />
+          </motion.li>
+        ))}
+      </motion.ul>
+    );
+  }
 
   return (
-    <Box py={{ base: 35, md: 55 }} style={{ backgroundColor: "#FFF8F6" }}>
+    <AnimatedSection className={classes.section} aria-labelledby={`${baseId}-title`}>
       <Container size="xl">
-        {/* Section Heading & Category Tabs */}
-        <Group justify="space-between" align="center" mb="xl" wrap="wrap" gap="md">
-          <Group gap="lg" align="center" wrap="wrap">
-            <Title
-              order={2}
-              style={{
-                fontSize: "1.75rem",
-                fontWeight: 800,
-                color: myOxygenColors.darkText,
-                fontFamily: "var(--font-poppins)",
-              }}
-            >
-              Featured Products
-            </Title>
+        <SectionHeader
+          eyebrow="Best sellers"
+          title={<span id={`${baseId}-title`}>Featured Products</span>}
+          action={
+            <Anchor component={Link} href="/products?sort=popular" fw={700} size="sm">
+              <Group gap={4} component="span">
+                View all
+                <IconArrowRight size={16} stroke={2.2} aria-hidden />
+              </Group>
+            </Anchor>
+          }
+        />
 
-            {/* Category Filter Pills matching mockup */}
-            <Group gap="xs" wrap="wrap">
-              {categoryTabs.map((cat) => {
-                const isActive = activeTab === cat;
-                return (
-                  <Button
-                    key={cat}
-                    size="xs"
-                    radius="xl"
-                    variant={isActive ? "filled" : "subtle"}
-                    color={isActive ? "primaryPink" : "gray"}
-                    onClick={() => setActiveTab(cat)}
-                    fw={isActive ? 700 : 500}
-                    style={{
-                      backgroundColor: isActive ? myOxygenColors.primaryPink : "transparent",
-                      color: isActive ? "#FFFFFF" : myOxygenColors.textGray,
-                      padding: "0 14px",
-                      height: 30,
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    {cat}
-                  </Button>
-                );
-              })}
-            </Group>
-          </Group>
-
-          {/* View All Link */}
-          <Link
-            href="/products"
-            style={{
-              textDecoration: "none",
-              color: myOxygenColors.primaryPink,
-              fontWeight: 700,
-              fontSize: "0.88rem",
-            }}
-          >
-            <Group gap={4}>
-              <Text inherit>View All</Text>
-              <IconArrowRight size={16} stroke={2.5} />
-            </Group>
-          </Link>
-        </Group>
-
-        {/* 4 Products Grid */}
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
-          {mockFeaturedProducts.map((prod) => {
-            const isLiked = wishlist[prod.id] || false;
-
+        <div role="tablist" aria-label="Filter featured products by category" className={classes.tabs}>
+          {tabs.map((tab, index) => {
+            const selected = tab.value === activeTab;
             return (
-              <Card
-                key={prod.id}
-                padding="md"
-                radius={20}
-                style={{
-                  border: "1px solid #FFE4EC",
-                  backgroundColor: "#FFFFFF",
-                  boxShadow: "0 4px 20px rgba(255, 107, 139, 0.05)",
-                  position: "relative",
-                  transition: "transform 0.25s ease, box-shadow 0.25s ease",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
+              <UnstyledButton
+                key={tab.value}
+                ref={(node: HTMLButtonElement | null) => {
+                  tabRefs.current[index] = node;
                 }}
+                id={tabId(tab.value)}
+                role="tab"
+                aria-selected={selected}
+                aria-controls={panelId}
+                tabIndex={selected ? 0 : -1}
+                className={classes.tab}
+                data-active={selected || undefined}
+                onClick={() => setActiveTab(tab.value)}
+                onKeyDown={handleKeyDown}
               >
-                {/* Product Image Container */}
-                <Box
-                  style={{
-                    position: "relative",
-                    height: 200,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    backgroundColor: "#FFF9FA",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Image
-                    src={prod.image}
-                    alt={prod.title}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-
-                  {/* Wishlist Heart Icon */}
-                  <ActionIcon
-                    variant="filled"
-                    radius="xl"
-                    size="md"
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      backgroundColor: "#FFFFFF",
-                      color: isLiked ? myOxygenColors.primaryPink : "#9CA3AF",
-                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-                    }}
-                    onClick={() => toggleWishlist(prod.id)}
-                    aria-label="Save to Wishlist"
-                  >
-                    <IconHeart
-                      size={16}
-                      fill={isLiked ? myOxygenColors.primaryPink : "none"}
-                    />
-                  </ActionIcon>
-                </Box>
-
-                {/* Product Details */}
-                <Box mt="md" style={{ flexGrow: 1 }}>
-                  <Text
-                    fw={700}
-                    size="sm"
-                    c={myOxygenColors.darkText}
-                    style={{ fontFamily: "var(--font-poppins)", minHeight: 20 }}
-                    lineClamp={1}
-                  >
-                    {prod.title}
-                  </Text>
-
-                  <Text fw={800} size="md" c={myOxygenColors.darkText} mt={4}>
-                    ৳ {prod.price.toLocaleString()}
-                  </Text>
-
-                  {/* Star Rating and Review Count */}
-                  <Group gap={6} align="center" mt={4}>
-                    <Rating
-                      value={prod.rating}
-                      fractions={2}
-                      readOnly
-                      size="xs"
-                      color="yellow"
-                    />
-                    <Text size="xs" c="dimmed">
-                      ({prod.reviewsCount})
-                    </Text>
-                  </Group>
-
-                  {/* Add to Cart Button (Solid pink pill matching mockup) */}
-                  <Button
-                    fullWidth
-                    radius="xl"
-                    size="sm"
-                    mt="md"
-                    onClick={() => handleAddToCart(prod)}
-                    style={{
-                      backgroundColor: myOxygenColors.primaryPink,
-                      color: "#FFFFFF",
-                      fontWeight: 700,
-                      height: 38,
-                      boxShadow: "0 4px 14px rgba(255, 107, 139, 0.35)",
-                      transition: "transform 0.15s ease",
-                    }}
-                  >
-                    Add to Cart
-                  </Button>
-                </Box>
-              </Card>
+                {selected ? (
+                  <motion.span layoutId={`${baseId}-indicator`} className={classes.indicator} transition={transitions.snappySpring} />
+                ) : null}
+                <span className={classes.tabLabel}>{tab.label}</span>
+              </UnstyledButton>
             );
           })}
-        </SimpleGrid>
+        </div>
+
+        <div id={panelId} role="tabpanel" aria-labelledby={tabId(activeTab)}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0, transition: transitions.easeOut }}
+              exit={{ opacity: 0, y: -8, transition: transitions.quick }}
+            >
+              {panel}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </Container>
-    </Box>
+    </AnimatedSection>
   );
 }

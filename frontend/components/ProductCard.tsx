@@ -1,23 +1,83 @@
 "use client";
 
-import React, { useState } from "react";
+import { useId, useState, type CSSProperties, type MouseEvent } from "react";
+import Link from "next/link";
 import {
-  Card,
-  Image,
-  Text,
-  Group,
-  Badge,
   ActionIcon,
-  Box,
+  Badge,
+  Button,
+  Group,
+  Paper,
   Rating,
+  Text,
+  VisuallyHidden,
+  type MantineColor,
 } from "@mantine/core";
-import { IconShoppingCart, IconHeart, IconCalendarTime } from "@tabler/icons-react";
-import { motion } from "motion/react";
-import { BrandButton } from "./BrandButton";
-import { cardHoverProps } from "../lib/animations";
-import { myOxygenColors } from "../tokens";
+import { useUncontrolled } from "@mantine/hooks";
+import {
+  IconCalendarTime,
+  IconHeart,
+  IconHeartFilled,
+  IconShoppingCart,
+} from "@tabler/icons-react";
+import { ImageWithFallback } from "./ImageWithFallback";
+import { Price } from "./Price";
+import { discountPercent, formatMonthYear, toNumber } from "../lib/format";
+import { semantic } from "../tokens";
+import type { ProductCardData } from "../types/catalog";
+import classes from "./ProductCard.module.css";
 
-export interface ProductCardProps {
+export type { ProductCardData };
+
+/** Default responsive `sizes` for a 2 → 3 → 4 column product grid. */
+export const PRODUCT_CARD_IMAGE_SIZES =
+  "(max-width: 36em) 50vw, (max-width: 62em) 33vw, (max-width: 88em) 25vw, 300px";
+
+/** Category slug → accent color for the category pill. */
+const CATEGORY_COLORS: Record<string, MantineColor> = {
+  newborn: "primaryPink",
+  "mother-care": "secondaryGreen",
+  "skin-care": "accentPurple",
+  "inner-wear": "primaryPink",
+};
+
+interface ProductCardSharedProps {
+  /**
+   * Called when "Add to cart" is pressed. Return a Promise to show the button's
+   * loading state until it settles. Cart logic stays with the caller.
+   */
+  onAddToCart?: (product: ProductCardData) => void | Promise<unknown>;
+  /** Controlled loading state for the add-to-cart button. */
+  addingToCart?: boolean;
+  /** Renders the wishlist heart when provided. */
+  onToggleWishlist?: (product: ProductCardData, nextValue: boolean) => void;
+  /** Controlled wishlist state (uncontrolled when omitted). */
+  isWishlisted?: boolean;
+  /** Link target. Defaults to `/products/{slug}`. */
+  href?: string;
+  /** Above-the-fold card: loads the image eagerly with high fetch priority (protects LCP). */
+  priority?: boolean;
+  /** next/image `sizes`. Defaults to `PRODUCT_CARD_IMAGE_SIZES`. */
+  sizes?: string;
+  /** Button label override (e.g. "Add"). */
+  addToCartLabel?: string;
+  /**
+   * @deprecated The whole card is now a link to the product page; this callback is ignored.
+   */
+  onCardClick?: (productId: string) => void;
+  className?: string;
+  style?: CSSProperties;
+}
+
+export interface ProductCardProps extends ProductCardSharedProps {
+  product: ProductCardData;
+}
+
+/**
+ * @deprecated Flat props kept so pre-refactor pages compile. Pass `product={...}` instead.
+ */
+export interface LegacyProductCardProps extends ProductCardSharedProps {
+  product?: undefined;
   id: string;
   title: string;
   slug?: string;
@@ -26,267 +86,252 @@ export interface ProductCardProps {
   basePrice: number | string;
   effectivePrice?: number | string;
   discountPercentage?: number;
+  /** Ignored for display — expiry is shown only when `batchExpiry` is provided. */
   requiresBatchTracking?: boolean;
   batchExpiry?: string | Date;
   rating?: number;
   reviewsCount?: number;
   inStock?: boolean;
-  onAddToCart?: (productId: string) => void;
-  onToggleWishlist?: (productId: string) => void;
-  onCardClick?: (productId: string) => void;
-  isWishlisted?: boolean;
-  className?: string;
-  style?: React.CSSProperties;
 }
 
-export function ProductCard({
-  id,
-  title,
-  slug: _slug,
-  image,
-  category,
-  basePrice,
-  effectivePrice,
-  discountPercentage,
-  requiresBatchTracking = false,
-  batchExpiry,
-  rating,
-  reviewsCount,
-  inStock = true,
-  onAddToCart,
-  onToggleWishlist,
-  onCardClick,
-  isWishlisted: initialWishlisted = false,
-  className,
-  style,
-}: ProductCardProps) {
-  const [isWishlisted, setIsWishlisted] = useState(initialWishlisted);
+function fromLegacyProps(props: LegacyProductCardProps): ProductCardData {
+  const expiry =
+    props.batchExpiry instanceof Date ? props.batchExpiry.toISOString() : props.batchExpiry;
+  return {
+    id: props.id,
+    title: props.title,
+    slug: props.slug || props.id,
+    image: props.image,
+    categoryName: props.category ?? null,
+    basePrice: props.basePrice,
+    effectivePrice: props.effectivePrice ?? null,
+    discountPercentage: props.discountPercentage ?? null,
+    inStock: props.inStock,
+    earliestExpiry: expiry ?? null,
+    rating: props.rating ?? null,
+    reviewCount: props.reviewsCount ?? null,
+  };
+}
 
-  const numBasePrice = typeof basePrice === "number" ? basePrice : parseFloat(basePrice) || 0;
-  const numEffectivePrice =
-    effectivePrice !== undefined
-      ? typeof effectivePrice === "number"
-        ? effectivePrice
-        : parseFloat(effectivePrice) || numBasePrice
-      : numBasePrice;
+function isLegacyProps(
+  props: ProductCardProps | LegacyProductCardProps
+): props is LegacyProductCardProps {
+  return props.product === undefined;
+}
 
-  // Compute discount percentage if not explicitly passed
-  const calculatedDiscount =
-    discountPercentage !== undefined
-      ? discountPercentage
-      : numBasePrice > numEffectivePrice && numBasePrice > 0
-      ? Math.round(((numBasePrice - numEffectivePrice) / numBasePrice) * 100)
-      : 0;
+function isOutOfStock(product: ProductCardData): boolean {
+  if (product.isOutOfStock !== undefined) {
+    return product.isOutOfStock;
+  }
+  if (product.inStock !== undefined) {
+    return !product.inStock;
+  }
+  if (typeof product.totalAvailable === "number") {
+    return product.totalAvailable <= 0;
+  }
+  return false;
+}
 
-  const hasDiscount = calculatedDiscount > 0;
+/**
+ * THE product card (storefront grids, related products, featured rails).
+ *
+ * - Whole card links to the product page (stretched-link pattern; buttons sit above it).
+ * - Shows only real data: expiry when `earliestExpiry` exists, rating when `rating` exists.
+ * - Effective price + struck base price + discount pill; low / out-of-stock badges.
+ */
+export function ProductCard(props: ProductCardProps | LegacyProductCardProps) {
+  const {
+    onAddToCart,
+    addingToCart,
+    onToggleWishlist,
+    isWishlisted,
+    href,
+    priority = false,
+    sizes = PRODUCT_CARD_IMAGE_SIZES,
+    addToCartLabel = "Add to Cart",
+    className,
+    style,
+  } = props;
 
-  // Format batch expiry if tracked
-  const formattedExpiry = (() => {
-    if (!requiresBatchTracking) {
-      return null;
+  const product: ProductCardData = isLegacyProps(props) ? fromLegacyProps(props) : props.product;
+  const titleId = useId();
+  const [pending, setPending] = useState(false);
+  const [wishlisted, setWishlisted] = useUncontrolled({
+    value: isWishlisted,
+    defaultValue: false,
+    finalValue: false,
+  });
+
+  const basePrice = toNumber(product.basePrice);
+  const effectivePrice = toNumber(product.effectivePrice, basePrice);
+  const discount =
+    typeof product.discountPercentage === "number" && product.discountPercentage > 0
+      ? Math.round(product.discountPercentage)
+      : discountPercent(basePrice, effectivePrice);
+  const outOfStock = isOutOfStock(product);
+  const lowStock = !outOfStock && product.isLowStock === true;
+  const expiryLabel = formatMonthYear(product.earliestExpiry);
+  const hasRating = typeof product.rating === "number" && product.rating > 0;
+  const imageSrc = product.image || product.images?.[0] || null;
+  const productHref = href ?? `/products/${encodeURIComponent(product.slug || product.id)}`;
+  const categoryColor: MantineColor =
+    (product.categorySlug && CATEGORY_COLORS[product.categorySlug]) || "primaryPink";
+  const isLoading = addingToCart ?? pending;
+
+  const handleAddToCart = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onAddToCart || outOfStock || isLoading) {
+      return;
     }
-    if (!batchExpiry) {
-      return "Exp: Mar 2027";
+    const result = onAddToCart(product);
+    if (result instanceof Promise) {
+      setPending(true);
+      try {
+        await result;
+      } finally {
+        setPending(false);
+      }
     }
-    if (typeof batchExpiry === "string") {
-      return batchExpiry.startsWith("Exp:") ? batchExpiry : `Exp: ${batchExpiry}`;
-    }
-    const d = new Date(batchExpiry);
-    if (isNaN(d.getTime())) {
-      return "Exp: Mar 2027";
-    }
-    return `Exp: ${d.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
-  })();
-
-  const handleWishlistClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsWishlisted((prev) => !prev);
-    onToggleWishlist?.(id);
   };
 
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (inStock && onAddToCart) {
-      onAddToCart(id);
-    }
+  const handleToggleWishlist = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const next = !wishlisted;
+    setWishlisted(next);
+    onToggleWishlist?.(product, next);
   };
 
   return (
-    <motion.div
-      {...cardHoverProps}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-      }}
+    <Paper
+      component="article"
+      aria-labelledby={titleId}
+      radius="md"
+      shadow="card"
+      withBorder
+      p="sm"
+      className={className ? `${classes.card} ${className}` : classes.card}
+      style={style}
     >
-      <Card
-        padding="md"
-        radius="lg"
-        className={className}
-        onClick={() => onCardClick?.(id)}
-        style={{
-          border: "1px solid #F3F4F6",
-          backgroundColor: "#FFFFFF",
-          boxShadow: "0 4px 15px rgba(0, 0, 0, 0.03)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          height: "100%",
-          cursor: onCardClick ? "pointer" : "default",
-          ...style,
-        }}
-      >
-        <Box>
-          {/* Product Image Container with 1:1 Aspect Ratio & Zoom Hover */}
-          <Box
-            style={{
-              position: "relative",
-              width: "100%",
-              aspectRatio: "1 / 1",
-              borderRadius: "12px",
-              overflow: "hidden",
-              backgroundColor: "#F9FAFB",
-            }}
+      <div className={classes.topRow}>
+        {discount > 0 ? (
+          <Badge variant="filled" color="primaryPink.8" size="sm" className={classes.discount}>
+            -{discount}%<VisuallyHidden> off</VisuallyHidden>
+          </Badge>
+        ) : (
+          <span />
+        )}
+
+        {onToggleWishlist ? (
+          <ActionIcon
+            variant="subtle"
+            color={wishlisted ? "primaryPink" : "gray"}
+            size="md"
+            className={classes.control}
+            aria-pressed={wishlisted}
+            aria-label={
+              wishlisted ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`
+            }
+            onClick={handleToggleWishlist}
           >
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              style={{
-                width: "100%",
-                height: "100%",
-              }}
-            >
-              <Image
-                src={image}
-                alt={title}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
-            </motion.div>
+            {wishlisted ? <IconHeartFilled size={18} /> : <IconHeart size={18} stroke={1.8} />}
+          </ActionIcon>
+        ) : null}
+      </div>
 
-            {/* Discount Pill */}
-            {hasDiscount && (
-              <Badge
-                variant="filled"
-                radius="sm"
-                size="sm"
-                style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 10,
-                  backgroundColor: myOxygenColors.primaryPink,
-                  color: "#FFFFFF",
-                  fontWeight: 700,
-                  letterSpacing: "0.5px",
-                  boxShadow: "0 2px 6px rgba(255, 107, 139, 0.4)",
-                  zIndex: 2,
-                }}
-              >
-                {calculatedDiscount}% OFF
-              </Badge>
-            )}
+      <div className={classes.media}>
+        <ImageWithFallback
+          src={imageSrc}
+          alt={product.title}
+          fill
+          sizes={sizes}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          className={outOfStock ? `${classes.image} ${classes.imageDimmed}` : classes.image}
+        />
+        {outOfStock ? (
+          <Badge variant="filled" color="gray" size="sm" className={classes.stockBadge}>
+            Out of stock
+          </Badge>
+        ) : null}
+        {lowStock ? (
+          <Badge variant="light" color="warning" size="sm" className={classes.stockBadge}>
+            {typeof product.totalAvailable === "number" && product.totalAvailable > 0
+              ? `Only ${product.totalAvailable} left`
+              : "Low stock"}
+          </Badge>
+        ) : null}
+      </div>
 
-            {/* Wishlist Button */}
-            <ActionIcon
-              variant="filled"
-              color={isWishlisted ? "red" : "white"}
-              c={isWishlisted ? "white" : "gray"}
-              radius="xl"
-              size="md"
-              aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-              style={{
-                position: "absolute",
-                top: 10,
-                right: 10,
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
-                zIndex: 2,
-              }}
-              onClick={handleWishlistClick}
-            >
-              <IconHeart size={16} fill={isWishlisted ? "currentColor" : "none"} />
-            </ActionIcon>
-          </Box>
+      <div className={classes.body}>
+        <h3 id={titleId} className={classes.title} title={product.title}>
+          <Link href={productHref} className={classes.titleLink}>
+            {product.title}
+          </Link>
+        </h3>
 
-          {/* Product Meta Section */}
-          <Box mt="sm">
-            <Group justify="space-between" align="center" gap="xs">
-              {category && (
-                <Badge size="xs" variant="light" color="primaryPink">
-                  {category}
-                </Badge>
-              )}
+        <div className={classes.metaRow}>
+          {product.categoryName ? (
+            <Badge variant="light" color={categoryColor} size="xs" radius="xl" tt="capitalize">
+              {product.categoryName}
+            </Badge>
+          ) : null}
+        </div>
 
-              {/* Perishable Batch Info Tag */}
-              {requiresBatchTracking && formattedExpiry && (
-                <Badge
-                  size="xs"
-                  variant="light"
-                  color="teal"
-                  leftSection={<IconCalendarTime size={12} />}
-                  style={{ textTransform: "none", fontWeight: 600 }}
-                >
-                  {formattedExpiry}
-                </Badge>
-              )}
-            </Group>
-
-            {/* Product Title */}
-            <Text
-              fw={700}
-              size="sm"
-              c={myOxygenColors.darkText}
-              mt={8}
-              lineClamp={2}
-              style={{ minHeight: "2.6em" }}
-            >
-              {title}
+        {hasRating ? (
+          <Group
+            gap={4}
+            wrap="nowrap"
+            role="img"
+            aria-label={`Rated ${(product.rating ?? 0).toFixed(1)} out of 5${
+              typeof product.reviewCount === "number" ? `, ${product.reviewCount} reviews` : ""
+            }`}
+          >
+            <Rating value={product.rating ?? 0} fractions={2} readOnly size="xs" aria-hidden />
+            <Text size="xs" c="dimmed" fw={500} aria-hidden>
+              {(product.rating ?? 0).toFixed(1)}
+              {typeof product.reviewCount === "number" ? ` (${product.reviewCount})` : ""}
             </Text>
+          </Group>
+        ) : null}
 
-            {/* Rating Section */}
-            {rating !== undefined && (
-              <Group gap={6} align="center" mt={4}>
-                <Rating value={rating} fractions={2} readOnly size="xs" color="yellow" />
-                {reviewsCount !== undefined && (
-                  <Text size="xs" c="dimmed">
-                    ({reviewsCount})
-                  </Text>
-                )}
-              </Group>
-            )}
+        {expiryLabel ? (
+          <Group gap={4} wrap="nowrap">
+            <IconCalendarTime size={14} color={semantic.textSuccess} aria-hidden />
+            <Text size="xs" fw={600} c={semantic.textSuccess}>
+              Best before {expiryLabel}
+            </Text>
+          </Group>
+        ) : null}
 
-            {/* Pricing Section */}
-            <Group align="baseline" gap="xs" mt="sm">
-              <Text fw={800} size="lg" c={myOxygenColors.darkText}>
-                ৳ {numEffectivePrice.toLocaleString()}
-              </Text>
-              {hasDiscount && (
-                <Text size="sm" td="line-through" c={myOxygenColors.textGray} fw={500}>
-                  ৳ {numBasePrice.toLocaleString()}
-                </Text>
-              )}
-            </Group>
-          </Box>
-        </Box>
+        <div className={classes.priceRow}>
+          <Price
+            value={effectivePrice}
+            compareAt={discount > 0 ? basePrice : null}
+            tone="brand"
+            size="md"
+            fw={800}
+          />
+        </div>
+      </div>
 
-        {/* Add to Cart CTA */}
-        <Box mt="md">
-          <BrandButton
-            variant="primary"
-            fullWidth
-            size="sm"
-            radius="xl"
-            disabled={!inStock}
-            onClick={handleAddToCart}
-            leftSection={<IconShoppingCart size={16} />}
-          >
-            {inStock ? "Add to Cart" : "Out of Stock"}
-          </BrandButton>
-        </Box>
-      </Card>
-    </motion.div>
+      {onAddToCart ? (
+        <Button
+          fullWidth
+          size="sm"
+          radius="xl"
+          className={classes.cta}
+          disabled={outOfStock}
+          loading={isLoading}
+          leftSection={<IconShoppingCart size={16} stroke={2.2} aria-hidden />}
+          // Accessible name starts with the visible label (WCAG 2.5.3 Label in Name).
+          aria-label={`${outOfStock ? "Out of stock" : addToCartLabel}: ${product.title}`}
+          onClick={handleAddToCart}
+        >
+          {outOfStock ? "Out of stock" : addToCartLabel}
+        </Button>
+      ) : null}
+    </Paper>
   );
 }

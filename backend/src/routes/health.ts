@@ -4,39 +4,55 @@ import { pool } from "../db/client";
 
 export const healthRoute = new Hono();
 
-export async function handleHealthCheck(c: Context) {
+export interface HealthUp {
+  status: "UP";
+  database: "CONNECTED";
+  latencyMs: number;
+  uptime: number;
+  timestamp: string;
+}
+
+export interface HealthDown {
+  status: "DOWN";
+  database: "DISCONNECTED";
+  uptime: number;
+  timestamp: string;
+}
+
+/**
+ * Deep health probe: pings the database. Deliberately outside the
+ * `{ success, data }` envelope so load balancers / Docker healthchecks can
+ * read it directly. Never exposes driver error text.
+ */
+export async function handleHealthCheck(c: Context): Promise<Response> {
   const start = performance.now();
   try {
     await pool.query("SELECT 1");
-    const latencyMs = Math.round(performance.now() - start);
-
-    return c.json(
-      {
-        status: "ok",
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-        database: {
-          status: "connected",
-          latencyMs,
-        },
-      },
-      200,
-    );
+    const body: HealthUp = {
+      status: "UP",
+      database: "CONNECTED",
+      latencyMs: Math.round(performance.now() - start),
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+    c.header("Cache-Control", "no-store");
+    return c.json(body, 200);
   } catch (error) {
-    const latencyMs = Math.round(performance.now() - start);
-    return c.json(
-      {
-        status: "error",
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-        database: {
-          status: "disconnected",
-          latencyMs,
-          error: (error as Error).message,
-        },
-      },
-      503,
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "health_check_db_failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
     );
+    const body: HealthDown = {
+      status: "DOWN",
+      database: "DISCONNECTED",
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+    c.header("Cache-Control", "no-store");
+    return c.json(body, 503);
   }
 }
 

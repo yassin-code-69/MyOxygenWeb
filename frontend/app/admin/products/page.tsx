@@ -1,849 +1,511 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
-  Container,
-  Paper,
-  Title,
-  Text,
-  Group,
-  Stack,
-  Button,
-  Table,
-  Badge,
-  TextInput,
-  Select,
-  NumberInput,
-  Modal,
-  Box,
-  Loader,
-  Alert,
   ActionIcon,
-  Tooltip,
-  Switch,
-  Textarea,
-  Image,
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Menu,
   SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  VisuallyHidden,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
-  IconPackage,
-  IconPlus,
-  IconSearch,
-  IconRefresh,
-  IconAlertTriangle,
-  IconEdit,
-  IconTrash,
-  IconBolt,
-  IconCheck,
+  IconDiscount,
+  IconDotsVertical,
   IconEye,
   IconEyeOff,
+  IconPackage,
+  IconPackageImport,
+  IconPencil,
+  IconPlus,
+  IconRestore,
+  IconSearch,
 } from "@tabler/icons-react";
-import useSWR from "swr";
-import { apiGet, apiPost, apiPatch, apiDelete } from "../../../lib/api-client";
-import { myOxygenColors } from "../../../tokens";
-import type { CatalogProductItem, CatalogProductsResponse } from "../../../types";
+import { ImageWithFallback } from "../../../components/ImageWithFallback";
+import { Price } from "../../../components/Price";
+import { StatusBadge } from "../../../components/StatusBadge";
+import { ConfirmModal } from "../../../components/admin/ConfirmModal";
+import { DataTable, type DataTableColumn } from "../../../components/admin/DataTable";
+import { FilterBar } from "../../../components/admin/FilterBar";
+import { ListingStatusBadge } from "../../../components/admin/ListingStatusBadge";
+import { PageHeader } from "../../../components/admin/PageHeader";
+import { RequirePermission } from "../../../components/admin/RequirePermission";
+import { formatCalendarDate, formatCount, formatDhakaDate, formatMoney } from "../../../components/admin/format";
+import { ProductDetailDrawer } from "../../../components/admin/products/ProductDetailDrawer";
+import { ProductFormModal } from "../../../components/admin/products/ProductFormModal";
+import { useAdminProducts, useCategories, useProductMutations } from "../../../hooks/admin/use-admin-products";
+import { useCan } from "../../../hooks/admin/use-permission";
+import { getErrorMessage } from "../../../lib/api-client";
+import { PERMISSIONS } from "../../../types/auth";
+import {
+  ADMIN_PRODUCT_SORTS,
+  ADMIN_PRODUCT_STATUS_FILTERS,
+  ADMIN_STOCK_FILTERS,
+  type AdminProductDTO,
+  type AdminProductSort,
+  type AdminProductStatusFilter,
+  type AdminStockFilter,
+} from "../../../types/admin";
 
-interface CategoryOption {
-  id: string;
-  name: string;
-  slug: string;
-  isActive: boolean;
+const STATUS_OPTIONS: { value: AdminProductStatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Live" },
+  { value: "awaiting_stock", label: "Awaiting stock" },
+  { value: "inactive", label: "Inactive" },
+];
+
+const STOCK_OPTIONS: { value: AdminStockFilter; label: string }[] = [
+  { value: "all", label: "Any stock" },
+  { value: "in_stock", label: "In stock" },
+  { value: "low", label: "Low stock" },
+  { value: "out", label: "Out of stock" },
+];
+
+const SORT_OPTIONS: { value: AdminProductSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "title_asc", label: "Title A–Z" },
+  { value: "title_desc", label: "Title Z–A" },
+  { value: "price_asc", label: "Price: low to high" },
+  { value: "price_desc", label: "Price: high to low" },
+  { value: "stock_asc", label: "Stock: low to high" },
+  { value: "stock_desc", label: "Stock: high to low" },
+];
+
+function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
+  return allowed.find((item) => item === value) ?? fallback;
 }
 
 export default function AdminProductsPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [productModalOpened, setProductModalOpened] = useState(false);
-  const [flashSaleModalOpened, setFlashSaleModalOpened] = useState(false);
-  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-
-  // Edit / Delete Target
-  const [editingProduct, setEditingProduct] = useState<CatalogProductItem | null>(null);
-  const [deletingProduct, setDeletingProduct] = useState<CatalogProductItem | null>(null);
-
-  // Dynamic Categories from Backend
-  const { data: categoriesResponse } = useSWR<{ success: boolean; data: CategoryOption[] }>(
-    "/catalog/categories",
-    apiGet,
-    { revalidateOnFocus: false },
-  );
-
-  const categoryOptions = useMemo(() => {
-    const rawCats = categoriesResponse?.data || [];
-    if (rawCats.length > 0) {
-      return rawCats.map((c) => ({ value: c.id, label: c.name, slug: c.slug }));
-    }
-    return [
-      { value: "04edc8e7-b59f-4fa5-a850-215101e82f9e", label: "Skin Care", slug: "skin-care" },
-      { value: "7e0995d3-5d99-4c89-861a-beeb78af8a79", label: "Mother Care", slug: "mother-care" },
-      { value: "97958a2c-6bd9-4f6a-b4fc-a161c9383c55", label: "Newborn", slug: "newborn" },
-      { value: "9c95d47b-a6fb-410c-9918-4a2759eb53a6", label: "Inner Wear", slug: "inner-wear" },
-    ];
-  }, [categoriesResponse]);
-
-  // Product Form State
-  const [formTitle, setFormTitle] = useState("");
-  const [formSlug, setFormSlug] = useState("");
-  const [formSku, setFormSku] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formCategoryId, setFormCategoryId] = useState<string | null>(null);
-  const [formBasePrice, setFormBasePrice] = useState<number | string>(850);
-  const [formCostPrice, setFormCostPrice] = useState<number | string>(550);
-  const [formImageUrl, setFormImageUrl] = useState("");
-  const [formRequiresBatch, setFormRequiresBatch] = useState(true);
-  const [formLowStockThreshold, setFormLowStockThreshold] = useState<number | string>(10);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Flash Sale Form State
-  const [saleProductId, setSaleProductId] = useState<string | null>(null);
-  const [saleDiscountType, setSaleDiscountType] = useState<"PERCENTAGE" | "FIXED_AMOUNT">("PERCENTAGE");
-  const [saleDiscountValue, setSaleDiscountValue] = useState<number | string>(15);
-  const [saleEndsAt, setSaleEndsAt] = useState("");
-  const [isSubmittingSale, setIsSubmittingSale] = useState(false);
-
-  // Fetch products from GET /catalog/products (with includeInactive=true for full admin visibility)
-  const categoryFilter = selectedCategory && selectedCategory !== "all" ? `&categorySlug=${selectedCategory}` : "";
-  const searchFilter = searchQuery.trim() ? `&q=${encodeURIComponent(searchQuery.trim())}` : "";
-  const queryUrl = `/catalog/products?limit=100&includeInactive=true${categoryFilter}${searchFilter}`;
-
-  const { data: response, error, isLoading, mutate } = useSWR<CatalogProductsResponse>(
-    queryUrl,
-    apiGet,
-    { keepPreviousData: true },
-  );
-
-  const rawProducts = useMemo(() => response?.data || [], [response]);
-
-  // Client-side status filtering
-  const products = useMemo(() => {
-    if (statusFilter === "active") {
-      return rawProducts.filter((p) => p.isActive !== false);
-    }
-    if (statusFilter === "inactive") {
-      return rawProducts.filter((p) => p.isActive === false);
-    }
-    return rawProducts;
-  }, [rawProducts, statusFilter]);
-
-  const openAddModal = () => {
-    setEditingProduct(null);
-    setFormTitle("");
-    setFormSlug("");
-    setFormSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
-    setFormDescription("Quality mother and baby care product.");
-    setFormCategoryId(categoryOptions[0]?.value || "skin-care");
-    setFormBasePrice(850);
-    setFormCostPrice(550);
-    setFormImageUrl("https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60");
-    setFormRequiresBatch(true);
-    setFormLowStockThreshold(10);
-    setProductModalOpened(true);
-  };
-
-  const openEditModal = (p: CatalogProductItem) => {
-    setEditingProduct(p);
-    setFormTitle(p.title);
-    setFormSlug(p.slug);
-    setFormSku(p.sku);
-    setFormDescription(p.description || "Quality mother and baby care product.");
-    setFormCategoryId(p.categoryId || categoryOptions[0]?.value || "skin-care");
-    setFormBasePrice(Number(p.basePrice) || 850);
-    setFormCostPrice(p.costPrice ? Number(p.costPrice) : 550);
-    setFormImageUrl(p.images && p.images.length > 0 ? p.images[0] : "");
-    setFormRequiresBatch(Boolean(p.requiresBatchTracking));
-    setFormLowStockThreshold(p.lowStockThreshold || 10);
-    setProductModalOpened(true);
-  };
-
-  const openFlashSaleModal = (p?: CatalogProductItem) => {
-    if (p) {
-      setSaleProductId(p.id);
-    } else {
-      setSaleProductId(products.length > 0 ? products[0].id : null);
-    }
-    setSaleDiscountType("PERCENTAGE");
-    setSaleDiscountValue(20);
-    // 7 days from now as default
-    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
-    setSaleEndsAt(nextWeek);
-    setFlashSaleModalOpened(true);
-  };
-
-  const handleTitleChange = (val: string) => {
-    setFormTitle(val);
-    if (!editingProduct) {
-      setFormSlug(
-        val
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/(^-|-$)+/g, ""),
-      );
-    }
-  };
-
-  const handleSaveProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setIsSubmitting(true);
-      const payload = {
-        title: formTitle.trim(),
-        slug: formSlug.trim() || undefined,
-        sku: formSku.trim() || undefined,
-        description: formDescription.trim() || "Quality mother and baby care product.",
-        categoryId: formCategoryId || categoryOptions[0]?.value || "skin-care",
-        basePrice: formBasePrice,
-        costPrice: formCostPrice,
-        images: formImageUrl.trim()
-          ? [formImageUrl.trim()]
-          : ["https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60"],
-        requiresBatchTracking: formRequiresBatch,
-        lowStockThreshold: Number(formLowStockThreshold) || 10,
-      };
-
-      if (editingProduct) {
-        const res = await apiPatch(`/admin/catalog/products/${editingProduct.id}`, payload);
-        if (!res.success) {
-          const detail = res.details ? JSON.stringify(res.details) : res.error;
-          throw new Error(detail || "Update failed");
-        }
-        notifications.show({
-          title: "Product Updated",
-          message: `${payload.title} was updated successfully`,
-          color: "teal",
-          icon: <IconCheck size={16} />,
-        });
-      } else {
-        const res = await apiPost("/admin/catalog/products", payload);
-        if (!res.success) {
-          const detail = res.details ? JSON.stringify(res.details) : res.error;
-          throw new Error(detail || "Creation failed");
-        }
-        notifications.show({
-          title: "Product Created",
-          message: `${payload.title} was added to catalog`,
-          color: "teal",
-          icon: <IconCheck size={16} />,
-        });
-      }
-
-      setProductModalOpened(false);
-      mutate();
-    } catch (err: any) {
-      notifications.show({
-        title: "Validation / Operation Error",
-        message: err.message || "Failed to save product",
-        color: "red",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Safe DELETE via apiDelete
-  const handleDeleteProduct = async () => {
-    if (!deletingProduct) return;
-    try {
-      setIsSubmitting(true);
-      const res = await apiDelete(`/admin/catalog/products/${deletingProduct.id}`);
-      if (!res.success) {
-        throw new Error(res.error || "Failed to delete product");
-      }
-      notifications.show({
-        title: "Product Removed",
-        message: res.message || `${deletingProduct.title} has been removed/deactivated`,
-        color: "orange",
-        icon: <IconCheck size={16} />,
-      });
-      setDeleteModalOpened(false);
-      mutate();
-    } catch (err: any) {
-      notifications.show({
-        title: "Error Deleting Product",
-        message: err.message || "Failed to delete product",
-        color: "red",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Toggle Reactivate
-  const handleReactivateProduct = async (p: CatalogProductItem) => {
-    try {
-      const res = await apiPatch(`/admin/catalog/products/${p.id}`, { isActive: true });
-      if (!res.success) throw new Error("Reactivation failed");
-      notifications.show({
-        title: "Product Restored",
-        message: `${p.title} is now active in storefront`,
-        color: "teal",
-        icon: <IconCheck size={16} />,
-      });
-      mutate();
-    } catch (err: any) {
-      notifications.show({
-        title: "Error Reactivating",
-        message: err.message || "Could not restore product",
-        color: "red",
-      });
-    }
-  };
-
-  const handleLaunchFlashSale = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!saleProductId) return;
-
-    try {
-      setIsSubmittingSale(true);
-      const res = await apiPost("/admin/catalog/flash-sales", {
-        productId: saleProductId,
-        discountType: saleDiscountType,
-        type: saleDiscountType,
-        value: String(saleDiscountValue),
-        startsAt: new Date().toISOString(),
-        endsAt: saleEndsAt ? new Date(saleEndsAt).toISOString() : new Date(Date.now() + 86400000 * 3).toISOString(),
-        isFlashSale: true,
-      });
-
-      if (!res.success) {
-        throw new Error(typeof res.error === "string" ? res.error : "Failed to launch flash sale");
-      }
-
-      notifications.show({
-        title: "⚡ Flash Sale Active!",
-        message: `Discount of ${saleDiscountValue}${saleDiscountType === "PERCENTAGE" ? "%" : "৳"} launched successfully`,
-        color: "teal",
-        icon: <IconCheck size={16} />,
-      });
-
-      setFlashSaleModalOpened(false);
-      mutate();
-    } catch (err: any) {
-      notifications.show({
-        title: "Flash Sale Error",
-        message: err.message || "Could not launch discount",
-        color: "red",
-      });
-    } finally {
-      setIsSubmittingSale(false);
-    }
-  };
-
   return (
-    <Container size="xl" py="xl">
-      <Stack gap="lg">
-        {/* Header */}
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <Box>
-            <Group gap="xs" align="center">
-              <IconPackage size={28} color={myOxygenColors.primaryPink} />
-              <Title
-                order={2}
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  color: myOxygenColors.darkText,
-                  fontWeight: 700,
-                }}
-              >
-                Products Catalog Manager
-              </Title>
-            </Group>
-            <Text size="sm" c="dimmed" mt={4}>
-              Manage Mother & Baby product records, prices, FEFO perishable tracking, and flash sales.
+    <RequirePermission permission={PERMISSIONS.PRODUCTS_READ}>
+      <ProductsView />
+    </RequirePermission>
+  );
+}
+
+function ProductsView() {
+  const searchParams = useSearchParams();
+  const canWrite = useCan(PERMISSIONS.PRODUCTS_WRITE);
+  const canBatches = useCan(PERMISSIONS.BATCHES_MANAGE);
+  const canDiscounts = useCan(PERMISSIONS.DISCOUNTS_MANAGE);
+
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [brand, setBrand] = useState("");
+  const [debouncedBrand] = useDebouncedValue(brand, 300);
+  const [status, setStatus] = useState<AdminProductStatusFilter>(() =>
+    pick(searchParams.get("status"), ADMIN_PRODUCT_STATUS_FILTERS, "all"),
+  );
+  const [stock, setStock] = useState<AdminStockFilter>(() => pick(searchParams.get("stock"), ADMIN_STOCK_FILTERS, "all"));
+  const [category, setCategory] = useState<string | null>(() => searchParams.get("category"));
+  const [sort, setSort] = useState<AdminProductSort>("newest");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AdminProductDTO | null>(null);
+  const [formOpened, setFormOpened] = useState(false);
+  const [deactivating, setDeactivating] = useState<AdminProductDTO | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const list = useAdminProducts({
+    page,
+    limit,
+    q: debouncedSearch,
+    brand: debouncedBrand,
+    status,
+    stock,
+    category,
+    sort,
+  });
+  const { data: categories } = useCategories();
+  const { deactivateProduct, reactivateProduct } = useProductMutations();
+
+  const categoryOptions = useMemo(
+    () => (categories ?? []).map((item) => ({ value: item.id, label: item.name })),
+    [categories],
+  );
+
+  const resetPage = <T,>(setter: (value: T) => void) => (value: T) => {
+    setter(value);
+    setPage(1);
+  };
+
+  const activeFilters =
+    (search.trim() ? 1 : 0) + (brand.trim() ? 1 : 0) + (stock !== "all" ? 1 : 0) + (category ? 1 : 0) + (status !== "all" ? 1 : 0);
+
+  const clearFilters = () => {
+    setSearch("");
+    setBrand("");
+    setStock("all");
+    setCategory(null);
+    setStatus("all");
+    setPage(1);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpened(true);
+  };
+
+  const openEdit = (product: AdminProductDTO) => {
+    setEditing(product);
+    setFormOpened(true);
+  };
+
+  const confirmDeactivate = async () => {
+    if (!deactivating) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const product = await deactivateProduct(deactivating.id, { mutate: list.mutate, current: list.data });
+      notifications.show({
+        color: "success",
+        title: "Product deactivated",
+        message: `${product.title} is hidden from the storefront. Its orders and stock history are kept.`,
+      });
+      setDeactivating(null);
+    } catch (error) {
+      notifications.show({ color: "danger", title: "Couldn't deactivate", message: getErrorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReactivate = async (product: AdminProductDTO) => {
+    try {
+      const updated = await reactivateProduct(product.id);
+      notifications.show({
+        color: "success",
+        title: "Product reactivated",
+        message:
+          updated.listingStatus === "ACTIVE"
+            ? `${updated.title} is live on the storefront again.`
+            : `${updated.title} will go live as soon as it has sellable stock.`,
+      });
+    } catch (error) {
+      notifications.show({ color: "danger", title: "Couldn't reactivate", message: getErrorMessage(error) });
+    }
+  };
+
+  const columns: DataTableColumn<AdminProductDTO>[] = [
+    {
+      key: "product",
+      header: "Product",
+      skeletonWidth: "85%",
+      cell: (product) => (
+        <Group gap="sm" wrap="nowrap">
+          <Box
+            w={44}
+            h={44}
+            style={{ position: "relative", flexShrink: 0, borderRadius: "var(--mo-radius-sm)", overflow: "hidden", border: "1px solid var(--mo-color-border-subtle)" }}
+          >
+            <ImageWithFallback src={product.images[0]} alt="" fill sizes="44px" style={{ objectFit: "cover" }} />
+          </Box>
+          <Box style={{ minWidth: 0 }}>
+            <Anchor component="button" type="button" fw={600} size="sm" ta="left" lineClamp={2} onClick={() => setDetailId(product.id)}>
+              {product.title}
+            </Anchor>
+            <Text size="xs" c="dimmed" truncate>
+              <Text component="span" inherit ff="var(--mo-font-monospace)">
+                {product.sku}
+              </Text>{" "}
+              · {product.category.name}
+              {product.brand ? ` · ${product.brand}` : ""}
             </Text>
           </Box>
-
-          <Group gap="sm">
-            <Button
-              variant="light"
-              color="pink"
-              leftSection={<IconBolt size={16} />}
-              onClick={() => openFlashSaleModal()}
-              style={{ fontWeight: 600 }}
-            >
-              Launch Flash Sale
-            </Button>
-
-            <Button
-              color="pink"
-              leftSection={<IconPlus size={16} />}
-              onClick={openAddModal}
-              style={{
-                backgroundColor: myOxygenColors.primaryPink,
-                fontWeight: 600,
-              }}
-            >
-              Add New Product
-            </Button>
-          </Group>
         </Group>
-
-        {/* Filter Bar */}
-        <Paper p="md" radius="md" withBorder style={{ backgroundColor: "#FFFFFF" }}>
-          <Group justify="space-between" align="center" wrap="wrap" gap="md">
-            <TextInput
-              placeholder="Search by title, SKU, or keyword..."
-              leftSection={<IconSearch size={16} color="#9CA3AF" />}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ flex: 1, minWidth: 240 }}
-            />
-
-            <Select
-              placeholder="Filter by Category"
-              value={selectedCategory}
-              onChange={setSelectedCategory}
-              data={[
-                { value: "all", label: "All Categories" },
-                ...categoryOptions.map((c) => ({ value: c.slug, label: c.label })),
-              ]}
-              style={{ width: 180 }}
-            />
-
-            <SegmentedControl
-              size="sm"
-              radius="md"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              data={[
-                { label: "All", value: "all" },
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
-              ]}
-            />
-
-            <Tooltip label="Refresh Catalog">
-              <ActionIcon variant="light" color="pink" size="lg" onClick={() => mutate()}>
-                <IconRefresh size={18} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Paper>
-
-        {/* Products Table */}
-        <Paper radius="md" withBorder style={{ backgroundColor: "#FFFFFF", overflow: "hidden" }}>
-          {isLoading && products.length === 0 ? (
-            <Box py={60} style={{ textAlign: "center" }}>
-              <Loader color="pink" size="md" />
-              <Text size="sm" c="dimmed" mt="md">
-                Loading products from catalog...
-              </Text>
-            </Box>
-          ) : error ? (
-            <Box p="xl">
-              <Alert icon={<IconAlertTriangle size={16} />} title="Error" color="red">
-                Failed to load products. Please ensure the backend is running.
-              </Alert>
-            </Box>
-          ) : products.length === 0 ? (
-            <Box py={60} style={{ textAlign: "center" }}>
-              <Text size="md" fw={600} c="dimmed">
-                No products found matching your filter criteria.
-              </Text>
-              <Button size="sm" variant="subtle" color="pink" mt="xs" onClick={openAddModal}>
-                Create new product
-              </Button>
-            </Box>
-          ) : (
-            <Box style={{ overflowX: "auto" }}>
-              <Table highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
-                <Table.Thead style={{ backgroundColor: "#FFF8F6" }}>
-                  <Table.Tr>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Product</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>SKU</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Base Price</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Effective Price</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Stock</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Tracking</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12 }}>Status</Table.Th>
-                    <Table.Th style={{ color: "#4B5563", fontSize: 12, textAlign: "right" }}>Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {products.map((item) => {
-                    const isItemActive = item.isActive !== false;
-                    return (
-                      <Table.Tr
-                        key={item.id}
-                        style={{
-                          opacity: isItemActive ? 1 : 0.6,
-                          backgroundColor: isItemActive ? undefined : "#FFFBFB",
-                        }}
-                      >
-                        {/* Product Thumbnail & Title */}
-                        <Table.Td>
-                          <Group gap="sm" wrap="nowrap">
-                            <Image
-                              src={item.images && item.images[0] ? item.images[0] : "/placeholder.png"}
-                              alt={item.title}
-                              width={42}
-                              height={42}
-                              radius="md"
-                              fallbackSrc="https://placehold.co/100x100?text=Product"
-                              style={{ objectFit: "cover", flexShrink: 0 }}
-                            />
-                            <Box style={{ maxWidth: 220 }}>
-                              <Text size="sm" fw={600} lineClamp={1} c={myOxygenColors.darkText}>
-                                {item.title}
-                              </Text>
-                              <Text size="xs" c="dimmed" lineClamp={1}>
-                                {item.slug}
-                              </Text>
-                            </Box>
-                          </Group>
-                        </Table.Td>
-
-                        {/* SKU */}
-                        <Table.Td>
-                          <Badge variant="light" color="gray" size="sm" radius="sm">
-                            {item.sku}
-                          </Badge>
-                        </Table.Td>
-
-                        {/* Base Price */}
-                        <Table.Td>
-                          <Text size="sm" fw={600} c={myOxygenColors.darkText}>
-                            ৳ {item.basePrice}
-                          </Text>
-                        </Table.Td>
-
-                        {/* Effective Price */}
-                        <Table.Td>
-                          <Group gap={6} align="center">
-                            <Text size="sm" fw={700} c={myOxygenColors.primaryPink}>
-                              ৳ {item.effectivePrice}
-                            </Text>
-                            {item.discount && (
-                              <Badge size="xs" color="pink" variant="filled">
-                                SALE
-                              </Badge>
-                            )}
-                          </Group>
-                        </Table.Td>
-
-                        {/* Total Stock */}
-                        <Table.Td>
-                          {item.totalAvailable === 0 ? (
-                            <Badge color="red" variant="light" size="sm">
-                              Out of Stock
-                            </Badge>
-                          ) : item.isLowStock ? (
-                            <Badge color="orange" variant="light" size="sm">
-                              Low: {item.totalAvailable} left
-                            </Badge>
-                          ) : (
-                            <Badge color="teal" variant="light" size="sm">
-                              {item.totalAvailable} in stock
-                            </Badge>
-                          )}
-                        </Table.Td>
-
-                        {/* Batch Tracking Indicator */}
-                        <Table.Td>
-                          {item.requiresBatchTracking ? (
-                            <Badge color="cyan" variant="dot" size="sm">
-                              FEFO
-                            </Badge>
-                          ) : (
-                            <Badge color="gray" variant="dot" size="sm">
-                              Standard
-                            </Badge>
-                          )}
-                        </Table.Td>
-
-                        {/* Status */}
-                        <Table.Td>
-                          {isItemActive ? (
-                            <Badge color="teal" variant="light" size="sm">
-                              Active
-                            </Badge>
-                          ) : (
-                            <Badge color="red" variant="outline" size="sm">
-                              Deactivated
-                            </Badge>
-                          )}
-                        </Table.Td>
-
-                        {/* Actions */}
-                        <Table.Td style={{ textAlign: "right" }}>
-                          <Group gap={6} justify="flex-end" wrap="nowrap">
-                            <Tooltip label="Launch Flash Sale">
-                              <ActionIcon
-                                variant="subtle"
-                                color="pink"
-                                size="sm"
-                                onClick={() => openFlashSaleModal(item)}
-                              >
-                                <IconBolt size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-
-                            <Tooltip label="Edit Product">
-                              <ActionIcon
-                                variant="subtle"
-                                color="blue"
-                                size="sm"
-                                onClick={() => openEditModal(item)}
-                              >
-                                <IconEdit size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-
-                            {isItemActive ? (
-                              <Tooltip label="Deactivate / Delete">
-                                <ActionIcon
-                                  variant="subtle"
-                                  color="red"
-                                  size="sm"
-                                  onClick={() => {
-                                    setDeletingProduct(item);
-                                    setDeleteModalOpened(true);
-                                  }}
-                                >
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip label="Restore to Storefront">
-                                <ActionIcon
-                                  variant="subtle"
-                                  color="teal"
-                                  size="sm"
-                                  onClick={() => handleReactivateProduct(item)}
-                                >
-                                  <IconEye size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            )}
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Box>
-          )}
-        </Paper>
-      </Stack>
-
-      {/* Add / Edit Product Modal */}
-      <Modal
-        opened={productModalOpened}
-        onClose={() => setProductModalOpened(false)}
-        title={
-          <Text fw={700} size="md" c={myOxygenColors.darkText}>
-            {editingProduct ? "Edit Product Record" : "Add New Mother & Baby Product"}
-          </Text>
-        }
-        radius="lg"
-        size="lg"
-      >
-        <form onSubmit={handleSaveProduct}>
-          <Stack gap="md">
-            <TextInput
-              label="Product Title"
-              placeholder="e.g. Natural Organic Baby Wash"
-              required
-              value={formTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
-            />
-
-            <Group grow align="flex-start">
-              <TextInput
-                label="Product Slug"
-                placeholder="natural-organic-baby-wash"
-                required
-                value={formSlug}
-                onChange={(e) => setFormSlug(e.target.value)}
-              />
-
-              <TextInput
-                label="SKU Code"
-                placeholder="SKN-BW-001"
-                required
-                value={formSku}
-                onChange={(e) => setFormSku(e.target.value)}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <Select
-                label="Category"
-                data={categoryOptions.map((c) => ({ value: c.value, label: c.label }))}
-                value={formCategoryId}
-                onChange={setFormCategoryId}
-                required
-              />
-
-              <TextInput
-                label="Product Image URL"
-                placeholder="https://images.unsplash.com/..."
-                value={formImageUrl}
-                onChange={(e) => setFormImageUrl(e.target.value)}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <NumberInput
-                label="Customer Base Price (৳)"
-                prefix="৳ "
-                min={0}
-                required
-                value={formBasePrice}
-                onChange={setFormBasePrice}
-              />
-
-              <NumberInput
-                label="Internal Cost Price (৳)"
-                prefix="৳ "
-                min={0}
-                required
-                value={formCostPrice}
-                onChange={setFormCostPrice}
-              />
-            </Group>
-
-            <Textarea
-              label="Description & Care Instructions"
-              placeholder="Describe the formulation, safe ingredients, and instructions..."
-              minRows={3}
-              value={formDescription}
-              onChange={(e) => setFormDescription(e.target.value)}
-            />
-
-            <Group justify="space-between" align="center" p="xs" style={{ backgroundColor: "#FFF8F6", borderRadius: 8 }}>
-              <Box>
-                <Text size="sm" fw={600}>
-                  FEFO Perishable Batch Tracking
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Enforce strict First-Expired, First-Out perishable batch allocation
-                </Text>
-              </Box>
-              <Switch
-                checked={formRequiresBatch}
-                onChange={(e) => setFormRequiresBatch(e.currentTarget.checked)}
-                color="pink"
-              />
-            </Group>
-
-            <NumberInput
-              label="Low Stock Warning Threshold (Units)"
-              min={1}
-              value={formLowStockThreshold}
-              onChange={setFormLowStockThreshold}
-            />
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="light" color="gray" onClick={() => setProductModalOpened(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                color="pink"
-                loading={isSubmitting}
-                style={{ backgroundColor: myOxygenColors.primaryPink }}
-              >
-                {editingProduct ? "Update Product" : "Create Product"}
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
-
-      {/* Launch Flash Sale Modal */}
-      <Modal
-        opened={flashSaleModalOpened}
-        onClose={() => setFlashSaleModalOpened(false)}
-        title={
-          <Group gap={6}>
-            <IconBolt size={20} color={myOxygenColors.primaryPink} />
-            <Text fw={700} size="md">
-              Launch Real-Time Flash Sale
+      ),
+    },
+    {
+      key: "status",
+      header: "Listing",
+      width: 160,
+      cell: (product) => (
+        <Stack gap={4} align="flex-start">
+          <ListingStatusBadge status={product.listingStatus} />
+          {product.activeDiscount ? (
+            <Badge size="xs" variant="light" color={product.activeDiscount.isFlashSale ? "accentPurple" : "primaryPink"}>
+              {product.activeDiscount.isFlashSale ? "Flash sale" : "Discount"} −{product.discountPercent}%
+            </Badge>
+          ) : null}
+        </Stack>
+      ),
+    },
+    {
+      key: "price",
+      header: "Price",
+      align: "right",
+      width: 130,
+      cell: (product) => <Price value={product.effectivePrice} compareAt={product.basePrice} size="sm" />,
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      align: "right",
+      width: 110,
+      visibleFrom: "lg",
+      cell: (product) => (
+        <Text size="sm" c="dimmed" className="mo-tabular-nums">
+          {formatMoney(product.costPrice)}
+        </Text>
+      ),
+    },
+    {
+      key: "stock",
+      header: "Stock",
+      align: "right",
+      width: 140,
+      cell: (product) => (
+        <Stack gap={2} align="flex-end">
+          <Group gap={6} wrap="nowrap" justify="flex-end">
+            {product.isOutOfStock ? <StatusBadge status="OUT_OF_STOCK" size="xs" withIcon={false} /> : null}
+            {!product.isOutOfStock && product.isLowStock ? <StatusBadge status="LOW_STOCK" size="xs" withIcon={false} /> : null}
+            <Text size="sm" fw={600} className="mo-tabular-nums">
+              {formatCount(product.totalStock)}
             </Text>
           </Group>
-        }
-        radius="lg"
-      >
-        <form onSubmit={handleLaunchFlashSale}>
-          <Stack gap="md">
-            <Select
-              label="Target Product"
-              data={products.map((p) => ({ value: p.id, label: `${p.title} (৳ ${p.basePrice})` }))}
-              value={saleProductId}
-              onChange={setSaleProductId}
-              required
-            />
-
-            <Group grow>
-              <Select
-                label="Discount Type"
-                data={[
-                  { value: "PERCENTAGE", label: "Percentage (%)" },
-                  { value: "FIXED_AMOUNT", label: "Fixed Amount (৳)" },
-                ]}
-                value={saleDiscountType}
-                onChange={(val) => setSaleDiscountType(val as any)}
-                required
-              />
-
-              <NumberInput
-                label="Discount Value"
-                min={1}
-                required
-                value={saleDiscountValue}
-                onChange={setSaleDiscountValue}
-              />
-            </Group>
-
-            <TextInput
-              label="Flash Sale Expiration Date/Time"
-              type="datetime-local"
-              required
-              value={saleEndsAt}
-              onChange={(e) => setSaleEndsAt(e.target.value)}
-            />
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="light" color="gray" onClick={() => setFlashSaleModalOpened(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                color="pink"
-                loading={isSubmittingSale}
-                style={{ backgroundColor: myOxygenColors.primaryPink }}
-              >
-                Launch Sale
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
-
-      {/* Delete / Deactivate Confirmation Modal */}
-      <Modal
-        opened={deleteModalOpened}
-        onClose={() => setDeleteModalOpened(false)}
-        title="Confirm Product Deletion / Deactivation"
-        radius="lg"
-      >
-        <Text size="sm">
-          Are you sure you want to remove <strong>{deletingProduct?.title}</strong>?
-          <br />
-          If the product has historical orders, it will be safely deactivated to preserve past customer invoices and inventory ledgers. If it has no orders, it will be permanently deleted.
+          {product.requiresBatchTracking && product.earliestExpiry ? (
+            <Text size="xs" c="dimmed">
+              Exp. {formatCalendarDate(product.earliestExpiry)}
+            </Text>
+          ) : null}
+        </Stack>
+      ),
+    },
+    {
+      key: "updated",
+      header: "Updated",
+      width: 130,
+      visibleFrom: "xl",
+      cell: (product) => (
+        <Text size="sm" c="dimmed">
+          {formatDhakaDate(product.updatedAt)}
         </Text>
-        <Group justify="flex-end" mt="lg">
-          <Button variant="light" color="gray" onClick={() => setDeleteModalOpened(false)}>
-            Cancel
-          </Button>
-          <Button color="red" loading={isSubmitting} onClick={handleDeleteProduct}>
-            Confirm Remove
-          </Button>
-        </Group>
-      </Modal>
-    </Container>
+      ),
+    },
+    {
+      key: "actions",
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      align: "right",
+      width: 60,
+      skeletonWidth: 24,
+      cell: (product) => (
+        <Menu position="bottom-end" withinPortal>
+          <Menu.Target>
+            <ActionIcon variant="subtle" color="gray" aria-label={`Actions for ${product.title}`}>
+              <IconDotsVertical size={18} aria-hidden />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item leftSection={<IconEye size={16} aria-hidden />} onClick={() => setDetailId(product.id)}>
+              View details & batches
+            </Menu.Item>
+            {canWrite ? (
+              <Menu.Item leftSection={<IconPencil size={16} aria-hidden />} onClick={() => openEdit(product)}>
+                Edit
+              </Menu.Item>
+            ) : null}
+            {canBatches ? (
+              <Menu.Item component={Link} href={`/admin/batches?import=${product.id}`} leftSection={<IconPackageImport size={16} aria-hidden />}>
+                Import batch
+              </Menu.Item>
+            ) : null}
+            {canDiscounts ? (
+              <Menu.Item
+                component={Link}
+                href={`/admin/discounts?new=automatic&productId=${product.id}`}
+                leftSection={<IconDiscount size={16} aria-hidden />}
+              >
+                Create discount / flash sale
+              </Menu.Item>
+            ) : null}
+            {canWrite ? <Menu.Divider /> : null}
+            {canWrite && product.listingStatus !== "INACTIVE" ? (
+              <Menu.Item color="danger" leftSection={<IconEyeOff size={16} aria-hidden />} onClick={() => setDeactivating(product)}>
+                Deactivate (hide)
+              </Menu.Item>
+            ) : null}
+            {canWrite && product.listingStatus === "INACTIVE" ? (
+              <Menu.Item leftSection={<IconRestore size={16} aria-hidden />} onClick={() => void handleReactivate(product)}>
+                Reactivate
+              </Menu.Item>
+            ) : null}
+          </Menu.Dropdown>
+        </Menu>
+      ),
+    },
+  ];
+
+  const meta = list.data?.meta;
+
+  return (
+    <Stack gap={0}>
+      <PageHeader
+        title="Products"
+        description={
+          canWrite
+            ? "Catalog, prices and listing status. New products stay hidden (Awaiting stock) until their first batch is imported."
+            : "Catalog, prices and listing status. You have read-only access."
+        }
+        actions={
+          <>
+            {canDiscounts ? (
+              <Button component={Link} href="/admin/discounts" variant="default" leftSection={<IconDiscount size={16} aria-hidden />}>
+                Discounts
+              </Button>
+            ) : null}
+            {canWrite ? (
+              <Button leftSection={<IconPlus size={16} aria-hidden />} onClick={openCreate}>
+                New product
+              </Button>
+            ) : null}
+          </>
+        }
+      />
+
+      <SegmentedControl
+        mb="md"
+        value={status}
+        onChange={(value) => resetPage(setStatus)(pick(value, ADMIN_PRODUCT_STATUS_FILTERS, "all"))}
+        data={STATUS_OPTIONS}
+        aria-label="Listing status"
+        style={{ alignSelf: "flex-start", maxWidth: "100%" }}
+      />
+
+      <FilterBar activeCount={activeFilters} onReset={clearFilters}>
+        <TextInput
+          variant="search"
+          label="Search"
+          placeholder="Title, SKU or brand"
+          leftSection={<IconSearch size={16} aria-hidden />}
+          value={search}
+          onChange={(event) => resetPage(setSearch)(event.currentTarget.value)}
+          w={{ base: "100%", sm: 260 }}
+        />
+        <Select
+          label="Category"
+          placeholder="All categories"
+          data={categoryOptions}
+          value={category}
+          onChange={resetPage(setCategory)}
+          searchable
+          clearable
+          nothingFoundMessage="No matching category"
+          w={{ base: "100%", sm: 220 }}
+          radius="xl"
+        />
+        <TextInput
+          label="Brand"
+          placeholder="Any brand"
+          value={brand}
+          onChange={(event) => resetPage(setBrand)(event.currentTarget.value)}
+          w={{ base: "100%", sm: 160 }}
+          radius="xl"
+        />
+        <Select
+          label="Stock"
+          data={STOCK_OPTIONS}
+          value={stock}
+          onChange={(value) => resetPage(setStock)(pick(value, ADMIN_STOCK_FILTERS, "all"))}
+          allowDeselect={false}
+          w={{ base: "100%", sm: 150 }}
+          radius="xl"
+        />
+        <Select
+          label="Sort"
+          data={SORT_OPTIONS}
+          value={sort}
+          onChange={(value) => resetPage(setSort)(pick(value, ADMIN_PRODUCT_SORTS, "newest"))}
+          allowDeselect={false}
+          w={{ base: "100%", sm: 190 }}
+          radius="xl"
+        />
+      </FilterBar>
+
+      <DataTable
+        label="Products"
+        columns={columns}
+        rows={list.data?.items}
+        getRowKey={(product) => product.id}
+        loading={list.isLoading}
+        refreshing={list.isLoading && Boolean(list.data)}
+        error={list.error}
+        onRetry={() => void list.mutate()}
+        permission={PERMISSIONS.PRODUCTS_READ}
+        minWidth={900}
+        emptyIcon={<IconPackage stroke={1.6} />}
+        emptyTitle={activeFilters > 0 ? "No products match these filters" : "No products yet"}
+        emptyDescription={activeFilters > 0 ? "Try a different search or clear the filters." : canWrite ? "Create your first product to start selling." : undefined}
+        emptyAction={
+          activeFilters > 0 ? (
+            <Button variant="light" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          ) : null
+        }
+        pagination={
+          meta
+            ? {
+                page: meta.page,
+                totalPages: meta.totalPages,
+                total: meta.total,
+                limit: meta.limit,
+                onPageChange: setPage,
+                onLimitChange: resetPage(setLimit),
+                itemLabel: "products",
+              }
+            : undefined
+        }
+      />
+
+      <ProductDetailDrawer productId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} />
+
+      {canWrite ? (
+        <ProductFormModal
+          opened={formOpened}
+          product={editing}
+          onClose={() => setFormOpened(false)}
+          onSaved={(saved) => {
+            if (!editing) {
+              setDetailId(saved.id);
+            }
+          }}
+        />
+      ) : null}
+
+      <ConfirmModal
+        opened={deactivating !== null}
+        onClose={() => setDeactivating(null)}
+        onConfirm={() => void confirmDeactivate()}
+        loading={busy}
+        color="danger"
+        title="Deactivate this product?"
+        confirmLabel="Deactivate"
+        message={
+          <Stack gap="xs">
+            <Text size="sm">
+              <strong>{deactivating?.title}</strong> will be hidden from the storefront and can&apos;t be ordered.
+            </Text>
+            <Text size="sm" c="dimmed">
+              It is not deleted: past orders, batches and stock history stay intact, and you can reactivate it at any time.
+            </Text>
+          </Stack>
+        }
+      />
+    </Stack>
   );
 }

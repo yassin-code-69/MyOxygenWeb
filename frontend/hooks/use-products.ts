@@ -1,61 +1,87 @@
-import useSWR from "swr";
-import { apiGet } from "../lib/api-client";
-import type { CatalogProductItem, CatalogProductsResponse, PaginationMeta } from "../types";
+"use client";
 
-export interface UseProductsFilterParams {
-  q?: string;
-  categorySlug?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  inStockOnly?: boolean;
-  sort?: "newest" | "price_asc" | "price_desc" | "popular" | string;
-  page?: number;
-  limit?: number;
+import useSWR from "swr";
+import { swrPageFetcher, type ApiError, type Page, type QueryParams } from "../lib/api-client";
+import type {
+  CatalogFacets,
+  CatalogProductDTO,
+  CatalogProductsMeta,
+  CatalogProductsQuery,
+} from "../types/catalog";
+
+export type ProductsPage = Page<CatalogProductDTO, CatalogProductsMeta>;
+export type ProductsKey = readonly [string, QueryParams];
+
+/** Page size used by the storefront explorer (divisible by the 2/3/4-column grids). */
+export const CATALOG_PAGE_SIZE = 12;
+
+/** Turns a query into request params, dropping empty values (so they never reach the URL). */
+export function buildProductsParams(query: CatalogProductsQuery): QueryParams {
+  const params: Record<string, string | number | boolean | readonly string[]> = {};
+  const q = query.q?.trim();
+  if (q) {
+    params.q = q.slice(0, 100);
+  }
+  if (query.category) {
+    params.category = query.category;
+  }
+  if (query.brand && query.brand.length > 0) {
+    params.brand = query.brand.slice(0, 20);
+  }
+  if (typeof query.minPrice === "number" && Number.isFinite(query.minPrice)) {
+    params.minPrice = query.minPrice;
+  }
+  if (typeof query.maxPrice === "number" && Number.isFinite(query.maxPrice)) {
+    params.maxPrice = query.maxPrice;
+  }
+  if (query.inStockOnly) {
+    params.inStockOnly = true;
+  }
+  if (query.sort) {
+    params.sort = query.sort;
+  }
+  if (query.page && query.page > 1) {
+    params.page = query.page;
+  }
+  params.limit = query.limit ?? CATALOG_PAGE_SIZE;
+  return params;
 }
 
-export function useProducts(filters: UseProductsFilterParams = {}) {
-  const queryParams: Record<string, any> = {
-    page: filters.page ?? 1,
-    limit: filters.limit ?? 12,
-  };
+export interface UseProductsOptions {
+  /** Set `false` to pause fetching (e.g. while a required value is unknown). */
+  enabled?: boolean;
+  /** Keep the previous page's data on screen while a new key loads (facets stay stable). */
+  keepPreviousData?: boolean;
+}
 
-  if (filters.q && filters.q.trim() !== "") {
-    queryParams.q = filters.q.trim();
-  }
-  if (filters.categorySlug && filters.categorySlug !== "all") {
-    queryParams.categorySlug = filters.categorySlug;
-  }
-  if (filters.minPrice !== undefined) {
-    queryParams.minPrice = filters.minPrice;
-  }
-  if (filters.maxPrice !== undefined) {
-    queryParams.maxPrice = filters.maxPrice;
-  }
-  if (filters.inStockOnly) {
-    queryParams.inStockOnly = true;
-  }
-  if (filters.sort) {
-    queryParams.sort = filters.sort;
-  }
+/**
+ * `GET /catalog/products` — paginated catalog listing with facets.
+ *
+ * `isLoading` is true whenever the CURRENT query has no cached result yet, even when
+ * `keepPreviousData` is returning the previous page (so grids can show skeletons while
+ * the sidebar keeps the previous facets).
+ */
+export function useProducts(query: CatalogProductsQuery, options: UseProductsOptions = {}) {
+  const { enabled = true, keepPreviousData = false } = options;
+  const key: ProductsKey | null = enabled ? ["/catalog/products", buildProductsParams(query)] : null;
 
-  const key = ["/catalog/products", JSON.stringify(queryParams)];
-
-  const { data, error, isLoading, isValidating, mutate } = useSWR<CatalogProductsResponse>(
+  const { data, error, isLoading, isValidating, mutate } = useSWR<ProductsPage, ApiError, ProductsKey | null>(
     key,
-    () => apiGet<CatalogProductsResponse>("/catalog/products", queryParams),
-    {
-      keepPreviousData: true,
-      revalidateOnFocus: false,
-    }
+    (requestKey: ProductsKey) => swrPageFetcher<CatalogProductDTO, CatalogProductsMeta>(requestKey),
+    { keepPreviousData, revalidateOnFocus: false }
   );
 
+  const meta: CatalogProductsMeta | undefined = data?.meta;
+  const facets: CatalogFacets | undefined = meta?.facets;
+
   return {
-    products: data?.data ?? ([] as CatalogProductItem[]),
-    pagination: data?.pagination as PaginationMeta | undefined,
-    meta: data?.pagination as PaginationMeta | undefined,
+    products: data?.items ?? [],
+    meta,
+    facets,
+    total: meta?.total ?? 0,
+    totalPages: meta?.totalPages ?? 0,
     isLoading,
     isValidating,
-    isError: !!error,
     error,
     mutate,
   };

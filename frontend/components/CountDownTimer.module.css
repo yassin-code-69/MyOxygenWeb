@@ -1,0 +1,59 @@
+.full {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 4px 8px;
+  border: 1.5px solid var(--mo-color-primary-6);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-canvas);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.value {
+  font-family: var(--mo-font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--mo-color-text-brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  margin-top: 2px;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mo-color-text-muted);
+}
+
+.separator {
+  font-weight: 800;
+  color: var(--mo-color-text-brand);
+}
+
+.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface-brand-tint);
+  color: var(--mo-color-text-brand);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.expired {
+  color: var(--mo-color-text-muted);
+}

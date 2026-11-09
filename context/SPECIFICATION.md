@@ -9,7 +9,7 @@
 
 ## 1. Core Architecture & Folder Invariants
 
-- **`backend/`**: Independent Bun + Hono.js RESTful API using Drizzle ORM connected to Supabase PostgreSQL (Tokyo pooler `aws-0-ap-northeast-1.pooler.supabase.com:6543`).
+- **`backend/`**: Independent Bun + Hono.js RESTful API using Drizzle ORM connected to Supabase PostgreSQL (Supavisor pooler in `ap-southeast-1`; transaction mode `:6543` for the API, session mode `:5432` for migrations).
 - **`frontend/`**: Independent Next.js 16 (Turbopack) + React 19 + Mantine 9 Storefront and Back-Office.
 - **`context/`**: Architecture blueprints, phase requirements, and development rules.
 - **Decoupled Constraint**: Strictly **NO monorepo workspaces**, **NO `pnpm-workspace.yaml`**, **NO Turborepo**, and **NO shared `packages/`**.

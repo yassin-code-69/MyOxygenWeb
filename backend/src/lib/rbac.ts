@@ -1,3 +1,5 @@
+import type { UserRole } from "../types";
+
 export const Permissions = {
   // Inventory & Batches
   PRODUCTS_READ: "products:read",
@@ -25,7 +27,7 @@ export const Permissions = {
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 
-export const RolePermissions: Record<string, Permission[]> = {
+export const RolePermissions: Readonly<Record<UserRole, readonly Permission[]>> = {
   SUPER_ADMIN: Object.values(Permissions),
   INVENTORY_MANAGER: [
     Permissions.PRODUCTS_READ,
@@ -54,5 +56,10 @@ export const RolePermissions: Record<string, Permission[]> = {
   ],
   CUSTOMER: [],
 };
+
+/** SUPER_ADMIN has every permission; other roles use the matrix above. */
+export function hasPermission(role: UserRole, permission: Permission): boolean {
+  return role === "SUPER_ADMIN" || RolePermissions[role].includes(permission);
+}
 
 export { requirePermission } from "../middleware/auth";

@@ -1,0 +1,16 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--mo-color-canvas);
+}
+
+.main {
+  flex: 1 0 auto;
+}
+
+/* Focus lands here from the skip link; the ring would outline the whole page. */
+.main:focus {
+  outline: none;
+}

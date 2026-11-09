@@ -1,0 +1,52 @@
+# Dependabot version updates. backend/ and frontend/ are independent Bun
+# projects (bun.lock each); GitHub Actions are pinned to commit SHAs and kept
+# current here. Minor/patch bumps are grouped to keep the PR queue short;
+# majors arrive one PR per package so they can be reviewed individually.
+version: 2
+
+updates:
+  - package-ecosystem: "bun"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Dhaka"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      backend-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "bun"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Dhaka"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Mantine packages must move in lockstep (same exact version).
+      mantine:
+        patterns: ["@mantine/*"]
+      frontend-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Dhaka"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns: ["*"]

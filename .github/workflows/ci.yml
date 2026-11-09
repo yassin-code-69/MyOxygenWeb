@@ -1,0 +1,226 @@
+# =============================================================================
+# My Oxygen — Continuous Integration
+#
+# backend   typecheck -> migration consistency + schema drift -> drizzle-kit
+#           migrate against a postgres:17 service -> seed + `bun test`
+# frontend  typecheck -> lint -> production build
+# docker    builds both production images (no push) once the above pass
+#
+# The two apps are independent folders (no monorepo tooling); every job sets
+# its own working directory. Third-party actions are pinned to commit SHAs
+# (Dependabot keeps them current).
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep on the same minor as ARG BUN_VERSION in backend/ and frontend/Dockerfile.
+  BUN_VERSION: "1.4.2"
+  NODE_VERSION: "24"
+  # Placeholder origin for CI builds only (inlined into the client bundle).
+  CI_PUBLIC_API_URL: "http://localhost:4000"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend · typecheck, migrate, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        # Official Debian image: ships the pg_trgm contrib extension used by migration 0001.
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: my_oxygen_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d my_oxygen_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Shell variables take precedence over backend/.env.test, which `bun test`
+      # loads automatically. Every URL is on localhost, so the test guard
+      # (src/tests/setup.ts) and the DB client guard accept it.
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/my_oxygen_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/my_oxygen_test
+      # External mode for scripts/test-db.ts: skip local cluster management,
+      # only create the database (if missing), migrate and seed.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/my_oxygen_test
+      # CI-only throwaway value (>= 64 chars). Never use it anywhere else.
+      JWT_SECRET: ci-only-jwt-secret-do-not-use-anywhere-else-0123456789abcdef0123456789abcdef
+      COURIER_PROVIDER: mock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-backend-${{ hashFiles('backend/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-backend-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Check migration snapshots
+        run: bun run db:check
+
+      - name: Fail on schema drift
+        # Generates a migration from src/db/schema/*.ts; any new file means the
+        # schema changed without a committed migration. (Offline: no DB access.)
+        timeout-minutes: 3
+        run: |
+          bun run db:generate --name ci_drift_check < /dev/null
+          drift="$(git status --porcelain --untracked-files=all -- src/migrations)"
+          if [ -n "$drift" ]; then
+            echo "$drift"
+            echo "::error title=Schema drift::src/db/schema changed without a migration. Run 'bun run db:generate' in backend/, review the SQL and commit it."
+            exit 1
+          fi
+
+      - name: Apply migrations (drizzle-kit, same path as production)
+        run: bun run db:migrate
+
+      - name: Seed and run tests
+        # `bun run test` = scripts/test-db.ts up (external mode: migrate no-op + seed) && bun test
+        run: bun run test
+
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend · typecheck, lint, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        # `next build` runs on Node (bin shebang); Next 16 needs >= 20.9.
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-frontend-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-frontend-
+
+      - name: Cache Next.js build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}-${{ hashFiles('frontend/**/*.ts', 'frontend/**/*.tsx', 'frontend/**/*.css', '!frontend/node_modules/**', '!frontend/.next/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ env.CI_PUBLIC_API_URL }}
+        run: bun run build
+
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker · build images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [backend, frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build backend image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          target: runtime
+          push: false
+          tags: my-oxygen-backend:ci-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build migrator image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          target: migrator
+          push: false
+          tags: my-oxygen-migrator:ci-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: frontend
+          push: false
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.CI_PUBLIC_API_URL }}
+          tags: my-oxygen-frontend:ci-${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max

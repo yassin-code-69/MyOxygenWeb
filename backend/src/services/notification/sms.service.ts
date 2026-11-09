@@ -1,117 +1,126 @@
-import type {
-  ISmsProvider,
-  NotificationPayload,
-  NotificationSendResult,
-} from "./notification.interface";
+/**
+ * SMS via SSL Wireless SMS Plus v3 (Bangladesh).
+ * Configured by env.SSL_WIRELESS_API_TOKEN + env.SSL_WIRELESS_SID (optional
+ * SSL_WIRELESS_BASE_URL). Numbers are normalised to the 8801XXXXXXXXX MSISDN.
+ * The csms_id is derived from the message reference, so a retried job reuses
+ * the same id and the gateway rejects the duplicate instead of re-sending.
+ */
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { env } from "../../env";
+import { toBangladeshMsisdn } from "../phone";
+import type { DeliveryOutcome, SmsMessage, SmsProvider } from "./notification.interface";
+
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface SslWirelessConfig {
   apiToken?: string;
   sid?: string;
   baseUrl?: string;
-  forceMock?: boolean;
+  timeoutMs?: number;
+  fetchImpl?: FetchLike;
 }
 
-export class SmsService implements ISmsProvider {
-  readonly isMock: boolean;
-  private readonly apiToken?: string;
-  private readonly sid?: string;
+export const SSL_WIRELESS_DEFAULT_URL = "https://smsplus.sslwireless.com/api/v3/send-sms";
+const MAX_REASON_LENGTH = 300;
+
+const responseSchema = z
+  .object({
+    status: z.string().optional(),
+    status_code: z.coerce.number().optional(),
+    error_message: z.string().optional(),
+    smsinfo: z
+      .array(z.object({ sms_status: z.string().optional(), reference_id: z.string().optional() }).passthrough())
+      .optional(),
+  })
+  .passthrough();
+
+function truncate(text: string): string {
+  return text.length > MAX_REASON_LENGTH ? `${text.slice(0, MAX_REASON_LENGTH)}…` : text;
+}
+
+/** Stable 20-character csms_id (the gateway's maximum) for a message reference. */
+export function csmsIdFor(reference: string): string {
+  return createHash("sha256").update(reference).digest("hex").slice(0, 20);
+}
+
+export class SslWirelessSmsProvider implements SmsProvider {
+  readonly isConfigured: boolean;
+  private readonly apiToken: string | undefined;
+  private readonly sid: string | undefined;
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: FetchLike;
 
-  constructor(config?: SslWirelessConfig) {
-    this.apiToken = config?.apiToken ?? process.env.SSL_WIRELESS_API_TOKEN;
-    this.sid = config?.sid ?? process.env.SSL_WIRELESS_SID;
-    this.baseUrl =
-      config?.baseUrl ??
-      process.env.SSL_WIRELESS_BASE_URL ??
-      "https://smsplus.sslwireless.com/api/v3/send-sms";
-    this.isMock = Boolean(config?.forceMock) || !this.apiToken || !this.sid;
+  constructor(config: SslWirelessConfig = {}) {
+    this.apiToken = config.apiToken ?? env.SSL_WIRELESS_API_TOKEN;
+    this.sid = config.sid ?? env.SSL_WIRELESS_SID;
+    this.baseUrl = config.baseUrl ?? env.SSL_WIRELESS_BASE_URL ?? SSL_WIRELESS_DEFAULT_URL;
+    this.timeoutMs = config.timeoutMs ?? 10_000;
+    this.fetchImpl = config.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.isConfigured = Boolean(this.apiToken && this.sid);
   }
 
-  /**
-   * Generates standard My Oxygen order confirmation SMS text.
-   */
-  generateOrderConfirmationSms(payload: NotificationPayload): string {
-    return `Dear ${payload.customerName}, your My Oxygen order ${payload.orderNumber} for ৳${payload.total} has been confirmed. Track at: myoxygen.com/orders/${payload.orderNumber}`;
-  }
-
-  /**
-   * Formats a Bangladeshi telephone number to standard MSISDN (8801XXXXXXXXX).
-   */
-  normalizeMsisdn(phone: string): string {
-    let clean = phone.replace(/[^0-9]/g, "");
-    if (clean.startsWith("880")) {
-      return clean;
+  async send(message: SmsMessage): Promise<DeliveryOutcome> {
+    if (!this.isConfigured) {
+      return { status: "skipped", reason: "not configured (SSL_WIRELESS_API_TOKEN / SSL_WIRELESS_SID missing)" };
     }
-    if (clean.startsWith("01")) {
-      return `88${clean}`;
-    }
-    return clean;
-  }
-
-  async sendSms(
-    recipientPhone: string,
-    message: string,
-  ): Promise<NotificationSendResult> {
-    const formattedPhone = this.normalizeMsisdn(recipientPhone);
-
-    if (this.isMock) {
-      const mockId = `mock-sms-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      return {
-        success: true,
-        channel: "SMS",
-        recipient: formattedPhone,
-        messageId: mockId,
-      };
+    const msisdn = toBangladeshMsisdn(message.phone);
+    if (msisdn === null) {
+      return { status: "failed", reason: "recipient is not a valid Bangladeshi mobile number", retryable: false };
     }
 
+    const csmsId = csmsIdFor(message.reference);
+    let response: Response;
     try {
-      const csmsId = `CSMS-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      const response = await fetch(this.baseUrl, {
+      response = await this.fetchImpl(this.baseUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           api_token: this.apiToken,
           sid: this.sid,
-          msisdn: formattedPhone,
-          sms: message,
+          msisdn,
+          sms: message.text,
           csms_id: csmsId,
         }),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `SSL Wireless SMS gateway error (${response.status}): ${errorText}`,
-        );
-      }
-
-      const data = (await response.json()) as any;
-      if (data.status_code && data.status_code !== 200 && data.status !== "SUCCESS") {
-        throw new Error(
-          `SSL Wireless returned error: ${data.status_message || JSON.stringify(data)}`,
-        );
-      }
-
+    } catch (error) {
       return {
-        success: true,
-        channel: "SMS",
-        recipient: formattedPhone,
-        messageId: data.smsinfo?.[0]?.sms_id || csmsId,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        channel: "SMS",
-        recipient: formattedPhone,
-        error: error.message || "Failed to dispatch SMS",
+        status: "failed",
+        reason: `SSL Wireless request failed: ${error instanceof Error ? error.message : String(error)}`,
+        retryable: true,
       };
     }
+
+    const text = await response.text();
+    if (!response.ok) {
+      return {
+        status: "failed",
+        reason: `SSL Wireless responded ${response.status}: ${truncate(text)}`,
+        retryable: response.status === 429 || response.status >= 500,
+      };
+    }
+
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(text) as unknown;
+    } catch {
+      return { status: "failed", reason: "SSL Wireless returned a non-JSON response", retryable: true };
+    }
+    const parsed = responseSchema.safeParse(parsedBody);
+    if (!parsed.success) {
+      return { status: "failed", reason: "SSL Wireless returned an unexpected response", retryable: false };
+    }
+    if (parsed.data.status?.toUpperCase() !== "SUCCESS") {
+      return {
+        status: "failed",
+        reason: `SSL Wireless rejected the SMS: ${truncate(parsed.data.error_message ?? parsed.data.status ?? "unknown error")}`,
+        retryable: false,
+      };
+    }
+    return { status: "sent", messageId: parsed.data.smsinfo?.[0]?.reference_id ?? csmsId };
   }
 }
 
-export const smsService = new SmsService();
+export const smsProvider = new SslWirelessSmsProvider();

@@ -1,0 +1,154 @@
+/* Home hero. Decorations are CSS shapes + Tabler icons (no inline SVG). */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding-block: 32px 40px;
+  background: var(--mo-gradient-blush-hero);
+}
+
+@media (min-width: 62em) {
+  .hero {
+    padding-block: 56px;
+  }
+}
+
+.bokeh {
+  position: absolute;
+  color: var(--mo-color-primary-4);
+  filter: blur(1.5px);
+  pointer-events: none;
+}
+
+.bokehOne {
+  top: 12%;
+  left: 22%;
+  opacity: 0.22;
+}
+
+.bokehTwo {
+  bottom: 10%;
+  left: 38%;
+  opacity: 0.18;
+}
+
+.eyebrow {
+  font-size: 1.05rem;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--mo-color-text-success);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--mo-font-heading);
+  font-size: clamp(2.25rem, 5vw, 4rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  color: var(--mo-color-text);
+}
+
+/* Large text: shade 7 keeps >= 3:1 on the blush wash (shade 6 would not). */
+.titleAccent {
+  display: block;
+  color: var(--mo-color-primary-7);
+}
+
+.subtitle {
+  max-width: 430px;
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--mo-color-text-secondary);
+}
+
+.visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: clamp(300px, 42vw, 440px);
+}
+
+/* Mint crescent: a transparent circle whose offset shadow forms the crescent. */
+.crescent {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(270px, 36vw, 400px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: -26px 14px 0 0 var(--mo-color-secondary-2);
+  opacity: 0.9;
+  transform: translate(-54%, -50%);
+  pointer-events: none;
+}
+
+.frame {
+  position: relative;
+  z-index: 2;
+  width: clamp(270px, 36vw, 410px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 6px solid var(--mo-color-surface);
+  border-radius: 50%;
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-xl);
+}
+
+.frameImage {
+  object-fit: cover;
+  object-position: center 15%;
+}
+
+.tag {
+  position: absolute;
+  top: 10%;
+  right: max(0px, calc(50% - clamp(270px, 36vw, 410px) / 2 - 70px));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.tagLeaf {
+  margin-left: 6px;
+  color: var(--mo-color-secondary-6);
+  transform: rotate(-20deg);
+}
+
+.script {
+  font-family: var(--mo-font-script);
+  font-size: clamp(1.6rem, 2.5vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--mo-color-primary-7);
+  transform: rotate(-2deg);
+}
+
+/* Leaf ribbon: a rounded-diagonal shape filled with the green scale. */
+.leaf {
+  position: absolute;
+  right: max(0px, calc(50% - clamp(270px, 36vw, 410px) / 2 - 30px));
+  bottom: 4%;
+  z-index: 1;
+  width: clamp(80px, 11vw, 120px);
+  aspect-ratio: 3 / 4;
+  border-radius: 0 100% 0 100%;
+  background: linear-gradient(160deg, var(--mo-color-secondary-3) 0%, var(--mo-color-secondary-6) 60%, var(--mo-color-secondary-7) 100%);
+  opacity: 0.85;
+  transform: rotate(18deg);
+  pointer-events: none;
+}
+
+@media (max-width: 36em) {
+  .tag {
+    right: 0;
+  }
+
+  .leaf {
+    right: 4px;
+  }
+}

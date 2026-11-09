@@ -1,30 +1,42 @@
-# Git
+# Safety net for builds that use the repository root as context.
+# docker-compose.yml builds with ./backend and ./frontend as contexts, which
+# use their own .dockerignore files.
+
+# --- Secrets: every env file except the committed templates ---
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- VCS ---
 .git
-.gitignore
+.github
 
-# Dependencies
-node_modules
+# --- Dependencies & build output ---
+**/node_modules
+**/.next
+**/out
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+**/*.log
 
-# Build artifacts
-.next
-dist
-build
-coverage
-*.tsbuildinfo
+# --- Local state ---
+backend/.testdb
+backend/uploads
 
-# Agent & Context docs
+# --- Tests ---
+**/*.test.ts
+**/*.test.tsx
+backend/src/tests
+
+# --- Agent tooling, specs and docs (not needed in images) ---
 .agents
+.claude
 context
 plans
+docs
 skills-lock.json
-
-# Environment & Logs
-.env*.local
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Uploads
-uploads/*
-!uploads/.gitkeep
+**/*.md

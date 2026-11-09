@@ -1,0 +1,111 @@
+.page {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient blurred orbs (CSS shapes). */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  pointer-events: none;
+}
+
+.orbPink {
+  top: 12%;
+  left: 4%;
+  width: 360px;
+  height: 360px;
+  background-color: var(--mo-color-primary-1);
+  opacity: 0.7;
+}
+
+.orbPurple {
+  top: 34%;
+  right: 4%;
+  width: 400px;
+  height: 400px;
+  background-color: var(--mo-color-accent-1);
+  opacity: 0.7;
+}
+
+.codeWrap {
+  position: relative;
+  text-align: center;
+}
+
+.code {
+  display: block;
+  font-family: var(--mo-font-heading);
+  font-size: clamp(80px, 16vw, 130px);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -2px;
+  background: linear-gradient(135deg, var(--mo-color-primary-6) 0%, var(--mo-brand-primary-gradient-end) 45%, var(--mo-color-accent-6) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  user-select: none;
+}
+
+.codeIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 3px solid var(--mo-color-surface-brand-tint);
+  border-radius: 50%;
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-lg);
+  color: var(--mo-color-primary-6);
+  transform: translate(-50%, -50%);
+}
+
+.search {
+  width: 100%;
+  max-width: 540px;
+}
+
+.destinationList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.destination {
+  display: block;
+  height: 100%;
+  padding: 18px;
+  border: 1px solid var(--mo-color-border-brand);
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface);
+  color: inherit;
+  text-decoration: none;
+  transition: transform var(--mo-duration-base) var(--mo-ease-out);
+}
+
+.destinationArrow {
+  flex-shrink: 0;
+  color: var(--mo-color-text-brand);
+}
+
+@media (hover: hover) {
+  .destination:hover {
+    transform: translateY(-4px);
+    border-color: var(--mo-color-border-brand-strong);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destination {
+    transition: none;
+  }
+
+  .destination:hover {
+    transform: none;
+  }
+}

@@ -1,110 +1,53 @@
 "use client";
 
-import React, { forwardRef } from "react";
-import { Button, type ButtonProps, type MantineRadius } from "@mantine/core";
-import { motion } from "motion/react";
-import { brandGradients, myOxygenColors } from "../tokens";
+import { forwardRef } from "react";
+import { Button, createPolymorphicComponent, type ButtonProps } from "@mantine/core";
+import { mantineGradients } from "../tokens";
+import classes from "./BrandButton.module.css";
 
-export type BrandButtonVariant = "primary" | "secondary" | "accent" | "ghost";
+/**
+ * - `primary`   pink gradient (#FF6B8B → #F472B6) — main CTAs
+ * - `secondary` green → purple gradient — secondary CTAs ("Buy now")
+ * - `accent`    filled purple — promotional actions
+ * - `outline`   pink outline, AA pink label
+ * - `ghost`     transparent, AA pink label, blush hover
+ */
+export type BrandButtonVariant = "primary" | "secondary" | "accent" | "outline" | "ghost";
 
-export interface BrandButtonProps
-  extends Omit<ButtonProps, "variant" | "color">,
-    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "color" | "style"> {
+export interface BrandButtonProps extends Omit<ButtonProps, "variant" | "color" | "gradient"> {
   variant?: BrandButtonVariant;
-  radius?: MantineRadius;
-  children: React.ReactNode;
-  fullWidth?: boolean;
-  disabled?: boolean;
-  loading?: boolean;
-  className?: string;
-  style?: React.CSSProperties;
-  component?: any;
-  href?: string;
 }
 
-const variantStyles: Record<
-  BrandButtonVariant,
-  {
-    background: string;
-    color: string;
-    boxShadow: string;
-    border: string;
-  }
-> = {
-  primary: {
-    background: brandGradients.primary,
-    color: "#FFFFFF",
-    boxShadow: "0 4px 14px rgba(255, 107, 139, 0.35)",
-    border: "none",
-  },
-  secondary: {
-    background: brandGradients.secondary,
-    color: "#FFFFFF",
-    boxShadow: "0 4px 14px rgba(76, 175, 125, 0.25)",
-    border: "none",
-  },
-  accent: {
-    background: myOxygenColors.accentPurple,
-    color: "#FFFFFF",
-    boxShadow: "0 4px 14px rgba(167, 139, 250, 0.3)",
-    border: "none",
-  },
-  ghost: {
-    background: "transparent",
-    color: myOxygenColors.darkText,
-    boxShadow: "none",
-    border: "1px solid #E5E7EB",
-  },
+const variantProps: Record<BrandButtonVariant, Pick<ButtonProps, "variant" | "color" | "gradient">> = {
+  primary: { variant: "gradient", gradient: mantineGradients.primary },
+  secondary: { variant: "gradient", gradient: mantineGradients.secondary },
+  accent: { variant: "filled", color: "accentPurple" },
+  outline: { variant: "outline", color: "primaryPink" },
+  ghost: { variant: "subtle", color: "primaryPink" },
 };
 
-export const BrandButton = forwardRef<HTMLButtonElement, BrandButtonProps>(
-  (
-    {
-      variant = "primary",
-      radius = "xl",
-      size = "md",
-      fullWidth = false,
-      disabled = false,
-      loading = false,
-      children,
-      style,
-      onClick,
-      ...others
-    },
-    ref
-  ) => {
-    const selectedStyle = variantStyles[variant];
-
-    return (
-      <motion.div
-        whileTap={disabled || loading ? undefined : { scale: 0.97 }}
-        transition={{ duration: 0.1, ease: "easeInOut" }}
-        style={{
-          display: fullWidth ? "block" : "inline-block",
-          width: fullWidth ? "100%" : "auto",
-        }}
-      >
-        <Button
-          ref={ref}
-          radius={radius}
-          size={size}
-          fullWidth={fullWidth}
-          disabled={disabled}
-          loading={loading}
-          onClick={onClick}
-          fw={650}
-          style={{
-            ...selectedStyle,
-            transition: "all 0.2s ease",
-            ...style,
-          }}
-          {...others}
-        >
-          {children}
-        </Button>
-      </motion.div>
-    );
-  }
+const BrandButtonBase = forwardRef<HTMLButtonElement, BrandButtonProps>(
+  ({ variant = "primary", radius = "xl", className, ...others }, ref) => (
+    <Button
+      ref={ref}
+      radius={radius}
+      {...variantProps[variant]}
+      {...others}
+      data-brand-variant={variant}
+      className={className ? `${classes.root} ${className}` : classes.root}
+    />
+  )
 );
 
-BrandButton.displayName = "BrandButton";
+BrandButtonBase.displayName = "BrandButton";
+
+/**
+ * Pill-shaped brand CTA built on Mantine `Button` (inherits `loading`, `leftSection`,
+ * `fullWidth`, `size`, …). Polymorphic and fully typed:
+ *
+ * ```tsx
+ * <BrandButton onClick={submit} loading={isSubmitting}>Place order</BrandButton>
+ * <BrandButton component={Link} href="/products" variant="outline">Shop all</BrandButton>
+ * ```
+ */
+export const BrandButton = createPolymorphicComponent<"button", BrandButtonProps>(BrandButtonBase);

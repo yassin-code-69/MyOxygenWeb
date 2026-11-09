@@ -1,77 +1,77 @@
+import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
-import { verifyToken, type UserTokenPayload } from "../lib/jwt";
-import { type Permission, RolePermissions } from "../lib/rbac";
+import { db } from "../db/client";
+import { users } from "../db/schema/tables";
+import { AppError } from "../lib/errors";
+import { InvalidTokenError, verifyAccessToken, type UserTokenPayload } from "../lib/jwt";
+import { hasPermission, type Permission } from "../lib/rbac";
+import type { UserRole } from "../types";
 
+/** Hono env for routes behind `requireAuth`: `c.get("user")` is the verified caller. */
 export interface AuthContext {
   Variables: {
     user: UserTokenPayload;
   };
 }
 
-// Enforces valid JWT token
+/**
+ * Requires a valid ACCESS token (`Authorization: Bearer <jwt>`) for an
+ * existing, active user. The role is taken from the database, so role
+ * changes and deactivation take effect immediately (one primary-key lookup).
+ */
 export const requireAuth = createMiddleware<AuthContext>(async (c, next) => {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return c.json(
-      { success: false, error: "Authorization token required" },
-      401,
-    );
+  const header = c.req.header("Authorization");
+  const match = header?.match(/^Bearer\s+(\S+)$/i);
+  if (!match) {
+    throw AppError.unauthorized("Authorization token required");
   }
 
-  const token = authHeader.split(" ")[1];
+  let payload: UserTokenPayload;
   try {
-    const payload = await verifyToken(token);
-    if (payload.tokenType && payload.tokenType !== "access") {
-      return c.json(
-        { success: false, error: "Access token required" },
-        401,
-      );
+    payload = await verifyAccessToken(match[1]);
+  } catch (error) {
+    if (error instanceof InvalidTokenError && error.message === "Access token required") {
+      throw AppError.unauthorized("Access token required");
     }
-    c.set("user", payload);
-    await next();
-  } catch {
-    return c.json(
-      { success: false, error: "Invalid or expired authentication token" },
-      401,
-    );
+    throw AppError.unauthorized("Invalid or expired authentication token");
   }
+
+  const [account] = await db
+    .select({ role: users.role, isActive: users.isActive })
+    .from(users)
+    .where(eq(users.id, payload.sub))
+    .limit(1);
+
+  if (!account || !account.isActive) {
+    throw AppError.unauthorized("Account is inactive or no longer exists");
+  }
+
+  c.set("user", { ...payload, role: account.role });
+  await next();
 });
 
-// Enforces specified role(s)
-export const requireRole = (...roles: string[]) => {
-  return createMiddleware<AuthContext>(async (c, next) => {
-    const user = c.get("user");
-    if (!user || !roles.includes(user.role)) {
-      return c.json(
-        { success: false, error: "Forbidden: Insufficient role permissions" },
-        403,
-      );
-    }
-    await next();
-  });
-};
-
-// Enforces granular permission based on user role
-export const requirePermission = (permission: Permission) => {
-  return createMiddleware<AuthContext>(async (c, next) => {
+/** Requires the authenticated user to have one of the given roles (use after `requireAuth`). */
+export const requireRole = (...roles: UserRole[]) =>
+  createMiddleware<AuthContext>(async (c, next) => {
     const user = c.get("user");
     if (!user) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
+      throw AppError.unauthorized();
     }
-
-    const assignedPermissions = RolePermissions[user.role] || [];
-    const hasPermission =
-      user.role === "SUPER_ADMIN" || assignedPermissions.includes(permission);
-
-    if (!hasPermission) {
-      return c.json(
-        {
-          success: false,
-          error: `Forbidden: Missing required permission [${permission}]`,
-        },
-        403,
-      );
+    if (!roles.includes(user.role)) {
+      throw AppError.forbidden("Insufficient role", { requiredRoles: roles });
     }
     await next();
   });
-};
+
+/** Requires a granular permission (SUPER_ADMIN always passes). Use after `requireAuth`. */
+export const requirePermission = (permission: Permission) =>
+  createMiddleware<AuthContext>(async (c, next) => {
+    const user = c.get("user");
+    if (!user) {
+      throw AppError.unauthorized();
+    }
+    if (!hasPermission(user.role, permission)) {
+      throw AppError.forbidden(`Missing required permission [${permission}]`, { permission });
+    }
+    await next();
+  });

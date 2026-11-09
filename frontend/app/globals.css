@@ -1,140 +1,252 @@
-/* My Oxygen Global Design System Styles */
+/*
+ * My Oxygen — global styles.
+ *
+ * Token variables (--mo-*) are generated from `tokens/*.ts` and emitted on :root by
+ * Mantine's cssVariablesResolver (theme.ts). Never hard-code colors here — use:
+ *   var(--mo-color-<scale>-<0..9>)   e.g. --mo-color-primary-6 (#FF6B8B)
+ *   var(--mo-color-<semantic>)       e.g. --mo-color-text-muted, --mo-color-border-brand
+ *   var(--mo-gradient-<name>), var(--mo-shadow-<name>), var(--mo-radius-<size>)
+ *
+ * Rules here only cover what Mantine props/theme cannot express. They target
+ * Mantine's static classes (.mantine-*) and never use !important (except the
+ * reduced-motion safety net at the end).
+ */
 
-:root {
-  --color-primary-pink: #FF6B8B;
-  --color-primary-light: #FFE4EC;
-  --color-secondary-green: #4CAF7D;
-  --color-accent-purple: #A78BFA;
-  --color-cream-bg: #FFF8F6;
-  --color-surface: #FFFFFF;
-  --color-dark-text: #1F2937;
-  --color-text-gray: #6B7280;
-  --color-border-warm: #FFE4EC;
-  --color-border-subtle: #F3F4F6;
-  --color-skeleton-base: #FDE8EC;
-  --color-skeleton-accent: #FFF5F8;
+/* ------------------------------------------------------------------------- */
+/* Document                                                                  */
+/* ------------------------------------------------------------------------- */
+
+html {
+  scrollbar-color: var(--mo-color-scrollbar-thumb) var(--mo-color-scrollbar-track);
+  scrollbar-width: thin;
 }
 
-html, body {
-  background-color: var(--color-cream-bg) !important;
-  color: var(--color-dark-text);
-  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+html body {
+  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  padding: 0;
   overflow-x: clip;
+  background-color: var(--mo-color-canvas);
+  color: var(--mo-color-text);
+  font-family: var(--mo-font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Force light theme across Mantine components */
-[data-mantine-color-scheme="dark"] {
-  --mantine-color-scheme: light;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--mo-font-heading);
 }
 
-/* 
- * Skeleton Loading Animations: Warm, visible rose-cream shimmer 
- * Replaces any dark/black skeleton defaults
- */
-.mantine-Skeleton-root {
-  --skeleton-color: #FDE8EC !important;
-  --skeleton-color-accent: #FFF5F8 !important;
-  background-color: #FDE8EC !important;
-  border-radius: 8px;
+::selection {
+  background-color: var(--mo-color-selection-bg);
+  color: var(--mo-color-selection-text);
 }
 
-.mantine-Skeleton-root::after {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.7) 50%,
-    transparent 100%
-  ) !important;
+img,
+video {
+  max-width: 100%;
 }
 
-/* Search & Filter inputs - crisp white, warm border, visible text */
-.mantine-TextInput-input,
-.mantine-Select-input,
-.mantine-NumberInput-input,
-.mantine-Textarea-input {
-  background-color: #FFFFFF !important;
-  border: 1.5px solid #FBCFE8 !important;
-  color: #1F2937 !important;
-  border-radius: 10px !important;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+/* ------------------------------------------------------------------------- */
+/* Focus — visible green ring for keyboard users (WCAG 2.4.7 / 1.4.11)       */
+/* `mo-focus-ring` is Mantine's theme.focusClassName.                        */
+/* ------------------------------------------------------------------------- */
+
+:focus-visible,
+.mo-focus-ring:focus-visible {
+  outline: 2px solid var(--mo-color-focus-ring);
+  outline-offset: 2px;
 }
 
-.mantine-TextInput-input:focus,
-.mantine-Select-input:focus,
-.mantine-NumberInput-input:focus,
-.mantine-Textarea-input:focus {
-  border-color: #FF6B8B !important;
-  box-shadow: 0 0 0 3px rgba(255, 107, 139, 0.15) !important;
+.mo-focus-ring:focus:not(:focus-visible) {
+  outline: none;
 }
 
-.mantine-TextInput-input::placeholder,
-.mantine-Select-input::placeholder {
-  color: #9CA3AF !important;
-}
-
-/* Dropdown menus & Select popovers */
-.mantine-Select-dropdown,
-.mantine-Menu-dropdown {
-  background-color: #FFFFFF !important;
-  border: 1px solid #FFE4EC !important;
-  box-shadow: 0 8px 24px rgba(255, 107, 139, 0.08) !important;
-  border-radius: 12px !important;
-}
-
-.mantine-Select-option,
-.mantine-Menu-item {
-  color: #1F2937 !important;
-  border-radius: 8px !important;
-}
-
-.mantine-Select-option[data-checked] {
-  background-color: #FFE4EC !important;
-  color: #FF6B8B !important;
-  font-weight: 600;
-}
-
-.mantine-Select-option:hover,
-.mantine-Menu-item:hover {
-  background-color: #FFF5F8 !important;
-}
-
-/* Top Progress Bar for Page Transitions */
-.myoxygen-progress-bar-container {
+/* Skip link (rendered by app/layout.tsx; pages put id="main-content" on <main>). */
+.mo-skip-link {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3.5px;
-  z-index: 99999;
-  pointer-events: none;
+  top: 8px;
+  left: 8px;
+  z-index: var(--mo-z-progress);
+  padding: 8px 16px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+  color: var(--mo-color-text-brand);
+  font-weight: 600;
+  box-shadow: var(--mo-shadow-md);
+  transform: translateY(-150%);
 }
 
-.myoxygen-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #FF6B8B 0%, #F472B6 50%, #A78BFA 100%);
-  box-shadow: 0 0 10px rgba(255, 107, 139, 0.8), 0 0 5px rgba(255, 107, 139, 0.4);
-  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms ease;
+.mo-skip-link:focus-visible {
+  transform: translateY(0);
 }
 
-/* Smooth custom scrollbars */
+/* ------------------------------------------------------------------------- */
+/* Scrollbars (WebKit; Firefox + Chromium 121+ use scrollbar-color above)    */
+/* ------------------------------------------------------------------------- */
+
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #FFF8F6;
+  background: var(--mo-color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #FFC7D2;
-  border-radius: 999px;
+  background: var(--mo-color-scrollbar-thumb);
+  border-radius: var(--mo-radius-xl);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #FF6B8B;
+  background: var(--mo-color-scrollbar-thumb-hover);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Inputs — warm border, green focus. Radius comes from the theme (md = 16px)  */
+/* so `radius="xl"` pill search bars work. Error states keep priority (Mantine's  */
+/* [data-error] selectors are more specific).                                */
+/* ------------------------------------------------------------------------- */
+
+[data-mantine-color-scheme] .mantine-Input-wrapper[data-variant="default"] {
+  --input-bd: var(--mo-color-border-input);
+  --input-bd-focus: var(--mo-color-focus-ring);
+}
+
+/* `variant="search"`: pill-shaped, white, warm border (TextInput/Autocomplete/Select…). */
+[data-mantine-color-scheme] .mantine-Input-wrapper[data-variant="search"] {
+  --input-bd: var(--mo-color-border-brand);
+  --input-bg: var(--mo-color-surface);
+  --input-bd-focus: var(--mo-color-focus-ring);
+  --input-radius: var(--mo-radius-xl);
+}
+
+.mantine-Input-wrapper[data-variant="search"] .mantine-Input-input {
+  border: 1.5px solid var(--input-bd);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.mantine-Input-input {
+  transition:
+    border-color var(--mo-duration-fast) var(--mo-ease-out),
+    box-shadow var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.mantine-Input-wrapper:not([data-variant="unstyled"]) .mantine-Input-input:focus,
+.mantine-Input-wrapper:not([data-variant="unstyled"]) .mantine-Input-input:focus-within {
+  box-shadow: var(--mo-shadow-focus);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Dropdowns — blush hover instead of gray                                    */
+/* ------------------------------------------------------------------------- */
+
+.mantine-Combobox-option:hover:where(:not([data-combobox-selected], [data-combobox-disabled])) {
+  background-color: var(--mo-color-surface-brand-tint);
+}
+
+.mantine-Menu-dropdown {
+  --menu-item-hover: var(--mo-color-surface-brand-tint);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Buttons — hover lift (transform only) on solid CTAs                       */
+/* ------------------------------------------------------------------------- */
+
+.mantine-Button-root {
+  transition:
+    transform var(--mo-duration-fast) var(--mo-ease-out),
+    background-color var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+@media (hover: hover) {
+  .mantine-Button-root:is([data-variant="filled"], [data-variant="gradient"]):where(
+      :not(:disabled, [data-disabled], [data-loading])
+    ):hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Skeleton — warm rose shimmer (#FDE8EC → #FFF5F8), compositor-only sweep   */
+/* ------------------------------------------------------------------------- */
+
+.mantine-Skeleton-root[data-visible]::before {
+  background-color: var(--mo-color-skeleton-base);
+}
+
+.mantine-Skeleton-root[data-visible]::after {
+  background-color: transparent;
+  background-image: var(--mo-gradient-shimmer);
+  transform: translateX(-100%);
+}
+
+.mantine-Skeleton-root[data-visible][data-animate]::after {
+  animation: mo-shimmer 1.4s var(--mo-ease-in-out) infinite;
+}
+
+@keyframes mo-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Utilities (only where Mantine has no prop)                                */
+/* ------------------------------------------------------------------------- */
+
+/* Tabular numerals for prices, counters and tables. */
+.mo-tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Frosted glass surface for sticky chrome (navbar / bottom nav). */
+.mo-glass {
+  background-color: color-mix(in srgb, var(--mo-color-surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+/* Reserve space for the fixed mobile bottom navigation. */
+@media (max-width: 48em) {
+  .mo-bottom-nav-spacer {
+    padding-bottom: calc(var(--mo-layout-mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Reduced motion safety net                                                 */
+/* ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mantine-Skeleton-root[data-visible]::after {
+    animation: none !important;
+    background-image: none;
+  }
 }

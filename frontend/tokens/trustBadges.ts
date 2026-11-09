@@ -15,8 +15,9 @@ export const trustBadges = [
     icon: "truck",
   },
   {
-    title: "Secure Payment",
-    subtitle: "Multiple Options",
-    icon: "credit-card",
+    // Only cash on delivery is live; don't promise other payment methods.
+    title: "Cash on Delivery",
+    subtitle: "Pay at Your Door",
+    icon: "cash",
   },
 ] as const;

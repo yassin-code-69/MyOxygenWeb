@@ -1,56 +1,60 @@
 "use client";
 
-import React from "react";
+import type { ReactNode } from "react";
 import { motion, type HTMLMotionProps } from "motion/react";
+import { revealVariants, type RevealDirection } from "../lib/animations";
 
-interface AnimatedSectionProps extends HTMLMotionProps<"section"> {
-  children: React.ReactNode;
+export interface AnimatedSectionProps
+  extends Omit<
+    HTMLMotionProps<"section">,
+    "initial" | "animate" | "whileInView" | "variants" | "viewport" | "transition" | "children"
+  > {
+  children?: ReactNode;
+  /** Delay (seconds) before the reveal starts. */
   delay?: number;
-  direction?: "up" | "down" | "left" | "right" | "none";
-  className?: string;
-  style?: React.CSSProperties;
+  /** Direction the content travels *from* (`up` = rises into place). */
+  direction?: RevealDirection;
+  /** Travel distance in px. Default 24. */
+  distance?: number;
+  /**
+   * Above-the-fold content (hero, first product row): rendered fully visible on the
+   * first paint with no entrance animation, so it never delays LCP.
+   */
+  priority?: boolean;
+  /** Alias of `priority`. */
+  immediate?: boolean;
+  /** Reveal only the first time it scrolls into view. Default `true`. */
+  once?: boolean;
+  /** Fraction of the section that must be visible before revealing. Default `0.15`. */
+  amount?: number;
 }
 
+/**
+ * Viewport-triggered reveal with spring physics (`motion/react`).
+ * Animates only `opacity` + `transform`. Users with `prefers-reduced-motion` get an
+ * opacity-only fade (the root `MotionConfig reducedMotion="user"` strips transforms).
+ */
 export function AnimatedSection({
   children,
   delay = 0,
   direction = "up",
-  className,
-  style,
+  distance,
+  priority = false,
+  immediate = false,
+  once = true,
+  amount = 0.15,
   ...props
 }: AnimatedSectionProps) {
-  const getInitialOffset = () => {
-    switch (direction) {
-      case "up":
-        return { y: 28, x: 0 };
-      case "down":
-        return { y: -28, x: 0 };
-      case "left":
-        return { x: 30, y: 0 };
-      case "right":
-        return { x: -30, y: 0 };
-      case "none":
-      default:
-        return { x: 0, y: 0 };
-    }
-  };
-
-  const initialOffset = getInitialOffset();
+  if (priority || immediate) {
+    return <motion.section {...props}>{children}</motion.section>;
+  }
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 15 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "300px 0px" }}
-      transition={{
-        duration: 0.4,
-        delay,
-        ease: "easeOut",
-      }}
-      className={className}
-      style={{
-        ...style,
-      }}
+      variants={revealVariants(direction, { delay, distance })}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once, amount }}
       {...props}
     >
       {children}

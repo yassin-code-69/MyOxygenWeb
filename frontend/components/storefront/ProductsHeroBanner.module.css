@@ -1,0 +1,132 @@
+/* Shop / category hero banner. Decorations are CSS shapes + Tabler icons (no inline SVG). */
+
+.banner {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 32px;
+  padding: 28px 16px;
+  border: 1px solid var(--mo-color-border-brand);
+  border-radius: var(--mo-radius-lg);
+  background: var(--mo-gradient-blush-hero);
+  box-shadow: var(--mo-shadow-card);
+}
+
+@media (min-width: 62em) {
+  .banner {
+    padding: 36px 32px;
+  }
+}
+
+.heart {
+  position: absolute;
+  color: var(--mo-color-primary-4);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+.heartOne {
+  top: 15%;
+  left: 40%;
+  opacity: 0.18;
+}
+
+.heartTwo {
+  top: 42%;
+  left: 58%;
+  opacity: 0.15;
+}
+
+/* Mint corner leaf (bottom-right). */
+.cornerLeaf {
+  position: absolute;
+  right: -18px;
+  bottom: -18px;
+  width: 120px;
+  height: 120px;
+  border-radius: 100% 0 100% 0;
+  background: linear-gradient(225deg, var(--mo-color-secondary-3) 0%, var(--mo-color-secondary-6) 100%);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+}
+
+.eyebrow {
+  font-family: var(--mo-font-script);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--mo-color-text-brand);
+}
+
+.title {
+  margin: 4px 0 8px;
+  font-family: var(--mo-font-heading);
+  font-size: clamp(1.9rem, 3.2vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--mo-color-secondary-9);
+}
+
+.description {
+  max-width: 480px;
+  margin-bottom: 24px;
+  font-weight: 500;
+  color: var(--mo-color-text-secondary);
+}
+
+.visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.crescent {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(180px, 22vw, 240px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: -20px 10px 0 0 var(--mo-color-secondary-2);
+  transform: translate(-56%, -50%);
+  pointer-events: none;
+}
+
+.frame {
+  position: relative;
+  z-index: 2;
+  width: clamp(180px, 22vw, 240px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 5px solid var(--mo-color-surface);
+  border-radius: 50%;
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-lg);
+}
+
+.frameImage {
+  object-fit: cover;
+  object-position: center 15%;
+}
+
+.script {
+  position: absolute;
+  top: 8%;
+  right: max(0px, calc(50% - clamp(180px, 22vw, 240px) / 2 - 80px));
+  z-index: 3;
+  font-family: var(--mo-font-script);
+  font-size: clamp(1.35rem, 2vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: right;
+  color: var(--mo-color-primary-7);
+  transform: rotate(-3deg);
+  pointer-events: none;
+}

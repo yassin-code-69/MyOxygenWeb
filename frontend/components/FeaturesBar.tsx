@@ -1,96 +1,57 @@
 "use client";
 
-import { Container, SimpleGrid, Group, Text, Box, ThemeIcon } from "@mantine/core";
-import {
-  IconShieldCheck,
-  IconPlant2,
-  IconTruckDelivery,
-  IconCreditCard,
-} from "@tabler/icons-react";
-import { myOxygenColors } from "../tokens";
+import { Container, Paper, Text, ThemeIcon, type MantineColor } from "@mantine/core";
+import { motion } from "motion/react";
+import { IconAward, IconCash, IconShieldCheck, IconTruckDelivery, type Icon } from "@tabler/icons-react";
+import { fadeInUp, staggerContainer } from "../lib/animations";
+import { trustBadges } from "../tokens/trustBadges";
+import classes from "./storefront/FeaturesBar.module.css";
 
-const trustFeatures = [
-  {
-    title: "Premium Quality",
-    subtitle: "Trusted Products",
-    icon: IconShieldCheck,
-    color: "#FF6B8B",
-    bgColor: "#FFF0F3",
-  },
-  {
-    title: "Safe & Natural",
-    subtitle: "For Your Loved Ones",
-    icon: IconPlant2,
-    color: "#4CAF7D",
-    bgColor: "#EDFBF3",
-  },
-  {
-    title: "Fast Delivery",
-    subtitle: "Across Bangladesh",
-    icon: IconTruckDelivery,
-    color: "#A78BFA",
-    bgColor: "#F5F3FF",
-  },
-  {
-    title: "Secure Payment",
-    subtitle: "Multiple Options",
-    icon: IconCreditCard,
-    color: "#FF6B8B",
-    bgColor: "#FFF1F2",
-  },
-];
+type TrustIconName = (typeof trustBadges)[number]["icon"];
 
+const ICONS: Record<TrustIconName, Icon> = {
+  award: IconAward,
+  "shield-check": IconShieldCheck,
+  truck: IconTruckDelivery,
+  cash: IconCash,
+};
+
+const COLORS: readonly MantineColor[] = ["primaryPink", "secondaryGreen", "accentPurple", "primaryPink"];
+
+/** Trust badges (design-token copy) entering with a staggered fade-up when scrolled into view. */
 export function FeaturesBar() {
   return (
-    <Box py={{ base: "sm", md: "md" }} style={{ position: "relative", zIndex: 10 }}>
+    <section aria-label="Why shop with My Oxygen" className={classes.section}>
       <Container size="xl">
-        <Box
-          p={{ base: "md", md: "lg" }}
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 20,
-            border: "1px solid #FFE4EC",
-            boxShadow: "0 6px 24px rgba(255, 107, 139, 0.05)",
-          }}
-        >
-          <SimpleGrid cols={{ base: 2, md: 4 }} spacing={{ base: "md", md: "xl" }}>
-            {trustFeatures.map((item) => {
-              const Icon = item.icon;
+        <Paper radius="md" withBorder shadow="card" p={{ base: "md", md: "lg" }}>
+          <motion.ul
+            className={classes.list}
+            variants={staggerContainer}
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true, amount: 0.4 }}
+          >
+            {trustBadges.map((badge, index) => {
+              const BadgeIcon = ICONS[badge.icon];
               return (
-                <Group
-                  key={item.title}
-                  gap="sm"
-                  wrap="nowrap"
-                  style={{
-                    padding: "4px 8px",
-                  }}
-                >
-                  <ThemeIcon
-                    size={46}
-                    radius="xl"
-                    style={{
-                      backgroundColor: item.bgColor,
-                      color: item.color,
-                      flexShrink: 0,
-                      border: `1px solid ${item.color}22`,
-                    }}
-                  >
-                    <Icon size={22} stroke={2} />
+                <motion.li key={badge.title} variants={fadeInUp} className={classes.item}>
+                  <ThemeIcon size={46} radius="xl" variant="light" color={COLORS[index % COLORS.length]}>
+                    <BadgeIcon size={22} stroke={2} aria-hidden />
                   </ThemeIcon>
-                  <Box>
-                    <Text fw={700} size="sm" c={myOxygenColors.darkText} style={{ lineHeight: 1.25 }}>
-                      {item.title}
+                  <div>
+                    <Text fw={700} size="sm" c="var(--mo-color-text)" lh={1.25}>
+                      {badge.title}
                     </Text>
-                    <Text size="xs" c="dimmed" mt={3} style={{ lineHeight: 1.25 }}>
-                      {item.subtitle}
+                    <Text size="xs" c="dimmed" mt={3} lh={1.25}>
+                      {badge.subtitle}
                     </Text>
-                  </Box>
-                </Group>
+                  </div>
+                </motion.li>
               );
             })}
-          </SimpleGrid>
-        </Box>
+          </motion.ul>
+        </Paper>
       </Container>
-    </Box>
+    </section>
   );
 }

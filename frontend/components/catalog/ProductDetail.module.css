@@ -1,0 +1,182 @@
+/* Product detail page (gallery, purchase panel, tabs). */
+
+.galleryColumn {
+  position: relative;
+}
+
+@media (min-width: 62em) {
+  .galleryColumn {
+    position: sticky;
+    top: 92px;
+  }
+}
+
+.gallery {
+  position: relative;
+}
+
+.carousel {
+  border-radius: var(--mo-radius-md);
+}
+
+.carousel:focus-visible {
+  outline: 2px solid var(--mo-color-focus-ring);
+  outline-offset: 3px;
+}
+
+.mainMedia {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border: 1px solid var(--mo-color-border-subtle);
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-card);
+}
+
+.mainImage {
+  object-fit: contain;
+  padding: 16px;
+}
+
+.discountBadge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  box-shadow: var(--mo-shadow-badge);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.thumbs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+}
+
+.thumb {
+  position: relative;
+  display: block;
+  width: 68px;
+  height: 68px;
+  overflow: hidden;
+  border: 2px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface);
+}
+
+.thumb[data-active] {
+  border-color: var(--mo-color-primary-6);
+}
+
+.thumbImage {
+  object-fit: cover;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--mo-font-heading);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--mo-color-text);
+}
+
+.flashPanel {
+  padding: 12px 14px;
+  border: 1px dashed var(--mo-color-primary-6);
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface-brand-tint);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+}
+
+.stepperInput {
+  width: 48px;
+}
+
+.stepperInput input {
+  padding: 0;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.perks {
+  padding: 16px;
+  border: 1px solid var(--mo-color-border-subtle);
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface-muted);
+}
+
+.perk {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--mo-color-text);
+}
+
+.perkIcon {
+  flex-shrink: 0;
+  color: var(--mo-color-text-success);
+}
+
+.tabsCard {
+  margin-block: 48px;
+  padding: 20px;
+  border: 1px solid var(--mo-color-border-subtle);
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-card);
+}
+
+@media (min-width: 48em) {
+  .tabsCard {
+    padding: 28px;
+  }
+}
+
+.description {
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--mo-color-text);
+  white-space: pre-line;
+}
+
+.specTable th {
+  width: 40%;
+  font-weight: 600;
+  color: var(--mo-color-text-secondary);
+}
+
+.relatedGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 48em) {
+  .relatedGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+}

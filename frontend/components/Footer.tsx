@@ -1,429 +1,194 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
+import { Box, Container, Divider, Group, SimpleGrid, Stack, Text, ThemeIcon, type BoxProps } from "@mantine/core";
 import {
-  Container,
-  Group,
-  Text,
-  Box,
-  Divider,
-  SimpleGrid,
-  Stack,
-  TextInput,
-  ActionIcon,
-  Image,
-} from "@mantine/core";
-import {
-  IconShieldCheck,
   IconAward,
-  IconClock,
-  IconSend,
+  IconCash,
+  IconHeartFilled,
   IconLeaf,
-  IconHeart,
+  IconShieldCheck,
+  IconTruckDelivery,
+  IconCalendarCheck,
 } from "@tabler/icons-react";
-import { myOxygenColors } from "../tokens";
+import { ImageWithFallback } from "./ImageWithFallback";
+import { formatBDT } from "../lib/format";
+import { rankShowcaseCategories } from "./storefront/category-visuals";
+import { useCategories } from "../hooks/catalog/use-categories";
+import classes from "./storefront/Footer.module.css";
 
 export interface FooterProps {
-  mt?: any;
-  style?: React.CSSProperties;
+  /** Top margin (Mantine spacing or any CSS length). Default `60`. */
+  mt?: BoxProps["mt"];
+  style?: CSSProperties;
+  /** Pink "Better Care • Happier Tomorrow" strip above the footer. */
   showAccentStrip?: boolean;
 }
 
-export function Footer({ mt = 60, style, showAccentStrip = false }: FooterProps = {}) {
+/** Delivery rule from the API contract: ৳60 below ৳1,500, free at or above. */
+const DELIVERY_FEE = 60;
+const FREE_DELIVERY_THRESHOLD = 1500;
+const MAX_FOOTER_CATEGORIES = 6;
+
+const TRUST_ITEMS = [
+  { label: "Quality Products", icon: IconShieldCheck },
+  { label: "Trusted Brand", icon: IconAward },
+  { label: "Cash on Delivery", icon: IconCash },
+] as const;
+
+const ACCOUNT_LINKS = [
+  { label: "Sign in", href: "/login" },
+  { label: "Create an account", href: "/register" },
+  { label: "My account", href: "/account" },
+  { label: "My orders", href: "/orders" },
+  { label: "Checkout", href: "/checkout" },
+] as const;
+
+function FooterLink({ href, children }: { href: string; children: string }) {
   return (
-    <Box
-      component="footer"
-      mt={mt}
-      style={{
-        backgroundColor: "#FFF8F6",
-        borderTop: "1px solid #FFE4EC",
-        ...style,
-      }}
-    >
-      {/* Optional Top Accent Banner Strip (Matching Mockup) */}
-      {showAccentStrip && (
-        <Box
-          py={12}
-          px={24}
-          style={{
-            backgroundColor: "#FFF0F3",
-            borderBottom: "1px solid #FFE4EC",
-          }}
-        >
-          <Container size="xl">
-            <Group justify="space-between" align="center">
+    <li>
+      <Link href={href} className={classes.link}>
+        {children}
+      </Link>
+    </li>
+  );
+}
+
+/**
+ * Storefront footer (cream design). Links point only to routes that exist; categories
+ * come from the API. No social links or contact details are shown because none exist
+ * in the project yet.
+ */
+export function Footer({ mt = 60, style, showAccentStrip = false }: FooterProps = {}) {
+  const { categories } = useCategories();
+  const shopCategories = rankShowcaseCategories(categories).slice(0, MAX_FOOTER_CATEGORIES);
+  const year = new Date().getFullYear();
+
+  return (
+    <Box component="footer" mt={mt} className={classes.root} style={style}>
+      {showAccentStrip ? (
+        <div className={classes.accentStrip}>
+          <Container size="xl" py={12}>
+            <Group justify="space-between" gap="sm">
               <Group gap={8}>
-                <Box style={{ width: 14, height: 14 }}>
-                  <svg viewBox="0 0 24 24" fill="#4CAF7D">
-                    <path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66l.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z" />
-                  </svg>
-                </Box>
-                <Text size="xs" fw={600} c="#6B7280">
+                <IconLeaf size={16} color="var(--mo-color-text-success)" aria-hidden />
+                <Text size="xs" fw={600} c="var(--mo-color-text-secondary)">
                   Better Care • Happier Tomorrow
                 </Text>
               </Group>
-
               <Group gap={6}>
-                <Text
-                  style={{
-                    fontFamily: "var(--font-caveat), 'Caveat', cursive",
-                    color: "#FF6B8B",
-                    fontSize: "1.3rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  My Oxygen ♡
-                </Text>
-                <Box style={{ width: 14, height: 14 }}>
-                  <svg viewBox="0 0 24 24" fill="#4CAF7D">
-                    <path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66l.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z" />
-                  </svg>
-                </Box>
+                <span className={classes.script}>My Oxygen</span>
+                <IconHeartFilled size={14} color="var(--mo-color-primary-6)" aria-hidden />
               </Group>
             </Group>
           </Container>
-        </Box>
-      )}
+        </div>
+      ) : null}
 
-      <Container size="xl" pt={showAccentStrip ? 20 : 40} pb={40}>
-        {/* Top Brand & Trust Showcase Row (Matching Style Guide Mockup) */}
-        <Group justify="space-between" align="center" wrap="wrap" gap="lg" mb={35}>
-          {/* Brand Identity & Tagline */}
+      <Container size="xl" pt={showAccentStrip ? 24 : 40} pb={40}>
+        <Group justify="space-between" align="center" wrap="wrap" gap="lg" mb={32}>
           <Group gap="lg" align="center" wrap="wrap">
-            <Link href="/" style={{ textDecoration: "none" }}>
-              <Group gap="xs">
-                <Box
-                  style={{
-                    width: 42,
-                    height: 42,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Image
-                    src="/icons/logo-heart.svg"
-                    alt="My Oxygen"
-                    w={42}
-                    h={42}
-                    fit="contain"
-                  />
-                </Box>
-                <Box>
-                  <Text
-                    fw={800}
-                    size="xl"
-                    style={{
-                      color: myOxygenColors.primaryPink,
-                      fontFamily: "var(--font-poppins)",
-                      lineHeight: 1.1,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    My Oxygen
-                  </Text>
-                  <Text size="11px" c="dimmed" fw={500} style={{ letterSpacing: "0.02em" }}>
-                    Healthy Life • Happy You
-                  </Text>
-                </Box>
-              </Group>
+            <Link href="/" className={classes.brand} aria-label="My Oxygen — home">
+              <ImageWithFallback src="/icons/logo-heart.svg" alt="" width={42} height={42} />
+              <div>
+                <div className={classes.brandName}>My Oxygen</div>
+                <Text size="xs" c="dimmed" fw={500}>
+                  Healthy Life • Happy You
+                </Text>
+              </div>
             </Link>
-
-            {/* Slogan with Leaf & Heart */}
-            <Group gap={6} align="center" visibleFrom="sm" ml="md">
-              <IconLeaf size={18} color="#4CAF7D" />
-              <Text
-                size="sm"
-                fw={600}
-                style={{
-                  color: "#4CAF7D",
-                  fontStyle: "italic",
-                  fontFamily: "var(--font-inter)",
-                }}
-              >
-                For a Healthier Brighter Tomorrow ♡
+            <Group gap={6} visibleFrom="sm">
+              <IconLeaf size={18} color="var(--mo-color-text-success)" aria-hidden />
+              <Text size="sm" fw={600} fs="italic" c="var(--mo-color-text-success)">
+                For a Healthier Brighter Tomorrow
               </Text>
             </Group>
           </Group>
 
-          {/* Trust Badges Capsule (Theme-Aligned Pure White Surface) */}
-          <Box
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 9999,
-              padding: "8px 22px",
-              border: "1px solid #FFE4EC",
-              boxShadow: "0 4px 16px rgba(255, 107, 139, 0.08)",
-            }}
-          >
-            <Group gap="lg" align="center">
-              <Group gap={8}>
-                <Box
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    backgroundColor: "#EDFBF3",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <IconShieldCheck size={16} color="#4CAF7D" />
-                </Box>
-                <Text size="xs" fw={700} c={myOxygenColors.darkText}>
-                  Quality Products
+          <ul className={classes.trustCapsule} aria-label="Why shop with us">
+            {TRUST_ITEMS.map(({ label, icon: TrustIcon }) => (
+              <Group component="li" key={label} gap={8} wrap="nowrap">
+                <ThemeIcon size={28} radius="xl" variant="light" color="secondaryGreen">
+                  <TrustIcon size={16} aria-hidden />
+                </ThemeIcon>
+                <Text size="xs" fw={700} c="var(--mo-color-text)">
+                  {label}
                 </Text>
               </Group>
-
-              <Group gap={8}>
-                <Box
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    backgroundColor: "#EDFBF3",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <IconAward size={16} color="#4CAF7D" />
-                </Box>
-                <Text size="xs" fw={700} c={myOxygenColors.darkText}>
-                  Trusted Brand
-                </Text>
-              </Group>
-
-              <Group gap={8}>
-                <Box
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    backgroundColor: "#EDFBF3",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <IconClock size={16} color="#4CAF7D" />
-                </Box>
-                <Text size="xs" fw={700} c={myOxygenColors.darkText}>
-                  24/7 Support
-                </Text>
-              </Group>
-            </Group>
-          </Box>
+            ))}
+          </ul>
         </Group>
 
-        <Divider color="#FFE4EC" mb={35} />
+        <Divider color="var(--mo-color-border-brand)" mb={32} />
 
-        {/* Main Footer Links & Info Grid */}
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing={35}>
-          {/* Col 1: About the Brand */}
+        <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing={32}>
           <Stack gap="sm">
-            <Text fw={700} size="md" c={myOxygenColors.darkText} style={{ fontFamily: "var(--font-poppins)" }}>
-              About My Oxygen
+            <h2 className={classes.heading}>About My Oxygen</h2>
+            <Text size="sm" c="var(--mo-color-text-secondary)" lh={1.6}>
+              From newborn care to motherhood, skincare and inner wear — essentials for every stage of
+              life, delivered across Bangladesh.
             </Text>
-            <Text size="sm" c={myOxygenColors.textGray} style={{ lineHeight: 1.6 }}>
-              From newborn care to motherhood, skincare and inner wear — all essentials for every stage of life across Bangladesh.
-            </Text>
-            <Group gap={6} align="center" mt={4}>
-              <IconLeaf size={15} color="#4CAF7D" />
-              <Text
-                size="xs"
-                fw={600}
-                style={{
-                  color: myOxygenColors.primaryPink,
-                  fontStyle: "italic",
-                }}
-              >
+            <Group gap={6}>
+              <IconLeaf size={15} color="var(--mo-color-text-success)" aria-hidden />
+              <Text size="xs" fw={600} fs="italic" c="var(--mo-color-text-brand)">
                 Because You Deserve the Best
               </Text>
-              <IconHeart size={13} color={myOxygenColors.primaryPink} fill={myOxygenColors.primaryPink} />
+              <IconHeartFilled size={13} color="var(--mo-color-primary-6)" aria-hidden />
             </Group>
           </Stack>
 
-          {/* Col 2: Categories */}
-          <Stack gap="xs">
-            <Text fw={700} size="md" c={myOxygenColors.darkText} style={{ fontFamily: "var(--font-poppins)" }}>
-              Categories
-            </Text>
-            <Stack gap={8} mt={2}>
-              <Text
-                component={Link}
-                href="/categories/newborn"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Newborn Care
-              </Text>
-              <Text
-                component={Link}
-                href="/categories/mother-care"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Mother Care
-              </Text>
-              <Text
-                component={Link}
-                href="/categories/skin-care"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Skin Care
-              </Text>
-              <Text
-                component={Link}
-                href="/categories/inner-wear"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Inner Wear
-              </Text>
-            </Stack>
-          </Stack>
+          <nav aria-label="Shop">
+            <h2 className={classes.heading}>Shop</h2>
+            <ul className={classes.linkList}>
+              <FooterLink href="/products">All products</FooterLink>
+              {shopCategories.map((category) => (
+                <FooterLink key={category.id} href={`/categories/${category.slug}`}>
+                  {category.name}
+                </FooterLink>
+              ))}
+            </ul>
+          </nav>
 
-          {/* Col 3: Customer Care & Quick Links */}
-          <Stack gap="xs">
-            <Text fw={700} size="md" c={myOxygenColors.darkText} style={{ fontFamily: "var(--font-poppins)" }}>
-              Customer Care
-            </Text>
-            <Stack gap={8} mt={2}>
-              <Text
-                component={Link}
-                href="/products"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                All Products
-              </Text>
-              <Text
-                component={Link}
-                href="/orders"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Track Order
-              </Text>
-              <Text
-                component={Link}
-                href="/products"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                About Us
-              </Text>
-              <Text
-                component={Link}
-                href="/products"
-                size="sm"
-                c={myOxygenColors.textGray}
-                style={{ textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = myOxygenColors.primaryPink)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = myOxygenColors.textGray)}
-              >
-                Privacy &amp; Policy
-              </Text>
-            </Stack>
-          </Stack>
+          <nav aria-label="Your account">
+            <h2 className={classes.heading}>Your account</h2>
+            <ul className={classes.linkList}>
+              {ACCOUNT_LINKS.map((link) => (
+                <FooterLink key={link.href} href={link.href}>
+                  {link.label}
+                </FooterLink>
+              ))}
+            </ul>
+          </nav>
 
-          {/* Col 4: Newsletter Subscription (Matching Style Guide Input Field) */}
-          <Stack gap="xs">
-            <Text fw={700} size="md" c={myOxygenColors.darkText} style={{ fontFamily: "var(--font-poppins)" }}>
-              Stay Connected
-            </Text>
-            <Text size="xs" c={myOxygenColors.textGray} style={{ lineHeight: 1.5 }}>
-              Subscribe for exclusive mother &amp; baby wellness updates and special offers.
-            </Text>
-
-            <Box mt={8}>
-              <TextInput
-                placeholder="Enter your email address"
-                radius="xl"
-                size="md"
-                rightSectionWidth={44}
-                rightSection={
-                  <ActionIcon
-                    size={32}
-                    radius="xl"
-                    style={{
-                      backgroundColor: myOxygenColors.primaryPink,
-                      color: "#FFFFFF",
-                      boxShadow: "0 2px 8px rgba(255, 107, 139, 0.35)",
-                      marginRight: 4,
-                      transition: "transform 0.15s ease, background-color 0.15s ease",
-                    }}
-                    styles={{
-                      root: {
-                        "&:hover": {
-                          backgroundColor: "#F472B6",
-                          transform: "scale(1.05)",
-                        },
-                      },
-                    }}
-                    aria-label="Subscribe to newsletter"
-                  >
-                    <IconSend size={15} stroke={2} />
-                  </ActionIcon>
-                }
-                styles={{
-                  input: {
-                    backgroundColor: "#FFFFFF",
-                    borderColor: "#FFE4EC",
-                    borderWidth: 1.5,
-                    color: myOxygenColors.darkText,
-                    height: 44,
-                    paddingLeft: 18,
-                    paddingRight: 48,
-                    fontSize: "0.88rem",
-                    boxShadow: "0 2px 8px rgba(255, 107, 139, 0.04)",
-                    "&::placeholder": {
-                      color: "#9CA3AF",
-                    },
-                    "&:focus": {
-                      borderColor: myOxygenColors.primaryPink,
-                      boxShadow: "0 0 0 3px rgba(255, 107, 139, 0.12)",
-                    },
-                  },
-                }}
-              />
-            </Box>
+          <Stack gap="sm">
+            <h2 className={classes.heading}>Shopping with us</h2>
+            <div className={classes.fact}>
+              <IconTruckDelivery size={18} className={classes.factIcon} aria-hidden />
+              <span>
+                Free delivery on orders of {formatBDT(FREE_DELIVERY_THRESHOLD)} or more; {formatBDT(DELIVERY_FEE)}{" "}
+                below that.
+              </span>
+            </div>
+            <div className={classes.fact}>
+              <IconCash size={18} className={classes.factIcon} aria-hidden />
+              <span>Pay with cash on delivery.</span>
+            </div>
+            <div className={classes.fact}>
+              <IconCalendarCheck size={18} className={classes.factIcon} aria-hidden />
+              <span>Perishable items ship first-expiring batch first, with the expiry date shown.</span>
+            </div>
           </Stack>
         </SimpleGrid>
 
-        <Divider color="#FFE4EC" my={30} />
+        <Divider color="var(--mo-color-border-brand)" my={28} />
 
-        {/* Bottom Bar: Copyright & Subtitle */}
         <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-          <Text size="xs" c={myOxygenColors.textGray}>
-            © 2026 My Oxygen. All rights reserved.
+          <Text size="xs" c="var(--mo-color-text-secondary)">
+            © {year} My Oxygen. All rights reserved.
           </Text>
-          <Text size="xs" c={myOxygenColors.textGray}>
-            Healthy Life • Happy You — For a Healthier Brighter Tomorrow ♡
+          <Text size="xs" c="var(--mo-color-text-secondary)">
+            Healthy Life • Happy You
           </Text>
         </Group>
       </Container>

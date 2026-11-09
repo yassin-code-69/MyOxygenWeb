@@ -1,0 +1,89 @@
+.section {
+  padding-block: 32px;
+}
+
+@media (min-width: 62em) {
+  .section {
+    padding-block: 56px;
+  }
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0 0 20px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--mo-color-border-brand);
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 48em) {
+  .tabs {
+    display: inline-flex;
+  }
+}
+
+.tab {
+  position: relative;
+  flex-shrink: 0;
+  padding: 7px 16px;
+  border-radius: var(--mo-radius-xl);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--mo-color-text-secondary);
+  white-space: nowrap;
+}
+
+.tab[data-active] {
+  color: var(--mo-color-text-on-primary);
+}
+
+.tab:not([data-active]):hover {
+  color: var(--mo-color-text-brand);
+}
+
+/* Sliding active pill (motion `layoutId`, transform-only). */
+.indicator {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-primary-8);
+  box-shadow: var(--mo-shadow-button);
+}
+
+.tabLabel {
+  position: relative;
+  z-index: 1;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 48em) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (min-width: 75em) {
+  .grid {
+    gap: 20px;
+  }
+}

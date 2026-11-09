@@ -1,0 +1,169 @@
+.section {
+  padding-block: 32px;
+}
+
+@media (min-width: 62em) {
+  .section {
+    padding-block: 56px;
+  }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 48em) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
+
+@media (min-width: 62em) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--mo-radius-lg);
+  background-color: var(--card-bg);
+  color: inherit;
+  text-decoration: none;
+  isolation: isolate;
+  transition: transform var(--mo-duration-base) var(--mo-ease-out);
+}
+
+@media (min-width: 48em) {
+  .card {
+    padding: 16px;
+  }
+}
+
+/* Hover shadow on a pseudo-element: fade its opacity instead of animating box-shadow. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow: var(--mo-shadow-card-hover);
+  opacity: 0;
+  transition: opacity var(--mo-duration-base) var(--mo-ease-out);
+}
+
+.media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--mo-radius-md);
+  background-color: var(--mo-color-surface);
+}
+
+.image {
+  object-fit: cover;
+  transition: transform var(--mo-duration-slow) var(--mo-ease-out);
+}
+
+.iconOnly {
+  object-fit: contain;
+  padding: 18%;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.name {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--mo-font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--mo-color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 48em) {
+  .name {
+    font-size: 1.125rem;
+  }
+}
+
+.tagline {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--mo-color-text-secondary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.explore {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  padding: 6px 14px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--explore-bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--mo-color-text-on-primary);
+}
+
+.exploreArrow {
+  transition: transform var(--mo-duration-base) var(--mo-ease-out);
+}
+
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-6px);
+  }
+
+  .card:hover::before {
+    opacity: 1;
+  }
+
+  .card:hover .image:not(.iconOnly) {
+    transform: scale(1.05);
+  }
+
+  .card:hover .exploreArrow {
+    transform: translateX(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card::before,
+  .image,
+  .exploreArrow {
+    transition: none;
+  }
+
+  .card:hover,
+  .card:hover .image,
+  .card:hover .exploreArrow {
+    transform: none;
+  }
+}

@@ -1,452 +1,435 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { ActionIcon, Anchor, Badge, Box, Button, Group, Pill, Select, Stack, Text, Tooltip } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconDownload, IconFileSpreadsheet, IconFilter } from "@tabler/icons-react";
+import { DataTable, type DataTableColumn } from "../../../components/admin/DataTable";
+import { DateRangeFilter, isCompleteRange, type DateRange } from "../../../components/admin/DateRangeFilter";
+import { FilterBar } from "../../../components/admin/FilterBar";
+import { PageHeader } from "../../../components/admin/PageHeader";
+import { ProductPicker, type ProductOption } from "../../../components/admin/ProductPicker";
+import { RequirePermission } from "../../../components/admin/RequirePermission";
 import {
-  Container,
-  Paper,
-  Title,
-  Text,
-  Group,
-  Stack,
-  Button,
-  Table,
-  Badge,
-  Box,
-  Loader,
-  Alert,
-  ActionIcon,
-  Tooltip,
-  Pagination,
-} from "@mantine/core";
-import {
-  IconHistory,
-  IconRefresh,
-  IconAlertTriangle,
-  IconCalendar,
-  IconBarcode,
-  IconFileAlert,
-  IconArrowUpRight,
-  IconArrowDownRight,
-  IconUser,
-  IconFilter,
-} from "@tabler/icons-react";
-import useSWR from "swr";
-import { apiGet } from "../../../lib/api-client";
-import { myOxygenColors } from "../../../tokens";
-import type { StockLedgerItemDTO } from "../../../types";
+  formatCalendarDate,
+  formatCount,
+  formatDhakaDateTime,
+  formatSignedDelta,
+  humanizeEnum,
+  isoToDhakaWallTime,
+  roleLabel,
+  todayInDhaka,
+} from "../../../components/admin/format";
+import { useAdminProduct } from "../../../hooks/admin/use-admin-products";
+import { fetchLedgerForExport, useLedger } from "../../../hooks/admin/use-ledger";
+import { useCan } from "../../../hooks/admin/use-permission";
+import { getErrorMessage } from "../../../lib/api-client";
+import { downloadCsv, toCsv, type CsvColumn } from "../../../lib/csv";
+import { PERMISSIONS } from "../../../types/auth";
+import { ADMIN_LEDGER_REASONS, type AdminLedgerEntryDTO, type AdminLedgerReason } from "../../../types/admin";
 
-type ReasonFilter =
-  | "All"
-  | "IMPORT"
-  | "PURCHASE"
-  | "RETURN"
-  | "EXPIRED_SCRAP"
-  | "ADJUSTMENT";
+const REASON_META: Record<AdminLedgerReason, { label: string; color: string }> = {
+  IMPORT: { label: "Import", color: "secondaryGreen" },
+  PURCHASE: { label: "Purchase", color: "info" },
+  RETURN: { label: "Return", color: "accentPurple" },
+  MANUAL_ADJUSTMENT: { label: "Manual adjustment", color: "warning" },
+  ADJUSTMENT: { label: "Manual adjustment", color: "warning" },
+  EXPIRED_SCRAP: { label: "Expired scrap", color: "danger" },
+};
 
-const REASON_OPTIONS: ReasonFilter[] = [
-  "All",
-  "IMPORT",
-  "PURCHASE",
-  "RETURN",
-  "EXPIRED_SCRAP",
-  "ADJUSTMENT",
+const EXPORT_LIMIT = 5000;
+
+function reasonMeta(reason: string): { label: string; color: string } {
+  return (REASON_META as Record<string, { label: string; color: string } | undefined>)[reason] ?? { label: humanizeEnum(reason), color: "gray" };
+}
+
+const CSV_COLUMNS: CsvColumn<AdminLedgerEntryDTO>[] = [
+  { header: "Date (Asia/Dhaka)", value: (row) => isoToDhakaWallTime(row.createdAt) },
+  { header: "Product", value: (row) => row.productTitle },
+  { header: "SKU", value: (row) => row.sku },
+  { header: "Batch", value: (row) => row.batchNumber },
+  { header: "Batch expiry", value: (row) => row.expiryDate },
+  { header: "Change", value: (row) => row.changeDelta },
+  { header: "Balance after", value: (row) => row.balanceAfter },
+  { header: "Reason", value: (row) => reasonMeta(row.reason).label },
+  { header: "Order", value: (row) => row.orderNumber },
+  { header: "Performed by", value: (row) => row.performedBy?.fullName ?? "System" },
+  { header: "Role", value: (row) => (row.performedBy ? roleLabel(row.performedBy.role) : "") },
+  { header: "Note", value: (row) => row.note },
 ];
 
-export default function StockAuditLedgerPage() {
-  const [activeReason, setActiveReason] = useState<ReasonFilter>("All");
-  const [page, setPage] = useState(1);
-  const pageSize = 15;
-
-  // Build query string for GET /admin/inventory/ledger
-  const queryParams = useMemo(() => {
-    const params: Record<string, any> = {
-      page,
-      limit: pageSize,
-    };
-    if (activeReason !== "All") {
-      params.reason = activeReason;
-    }
-    return params;
-  }, [page, activeReason]);
-
-  // SWR fetch from GET /admin/inventory/ledger
-  const {
-    data: ledgerResponse,
-    error: ledgerError,
-    isLoading: isLedgerLoading,
-    mutate: refreshLedger,
-  } = useSWR<any>(
-    ["/admin/inventory/ledger", JSON.stringify(queryParams)],
-    () => apiGet("/admin/inventory/ledger", queryParams),
-    { revalidateOnFocus: true }
-  );
-
-  // Parse entries and pagination metadata
-  const { entries, totalCount, totalPages } = useMemo(() => {
-    const resData = ledgerResponse?.data || ledgerResponse || {};
-    const list: StockLedgerItemDTO[] = Array.isArray(resData.entries)
-      ? resData.entries
-      : Array.isArray(resData)
-      ? resData
-      : [];
-    const total = typeof resData.total === "number" ? resData.total : list.length;
-    const pages =
-      typeof resData.totalPages === "number"
-        ? resData.totalPages
-        : Math.ceil(total / pageSize) || 1;
-
-    return {
-      entries: list,
-      totalCount: total,
-      totalPages: Math.max(1, pages),
-    };
-  }, [ledgerResponse, pageSize]);
-
-  // Format date helper
-  const formatDateTime = (dateStr?: string) => {
-    if (!dateStr) {
-      return "—";
-    }
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  // Render Reason Badge
-  const renderReasonBadge = (reason: string) => {
-    const normalized = reason.toUpperCase();
-    switch (normalized) {
-      case "IMPORT":
-        return (
-          <Badge color="teal" variant="light" size="sm" radius="md" fw={700}>
-            IMPORT
-          </Badge>
-        );
-      case "PURCHASE":
-        return (
-          <Badge color="indigo" variant="light" size="sm" radius="md" fw={700}>
-            PURCHASE
-          </Badge>
-        );
-      case "RETURN":
-        return (
-          <Badge color="cyan" variant="light" size="sm" radius="md" fw={700}>
-            RETURN
-          </Badge>
-        );
-      case "EXPIRED_SCRAP":
-        return (
-          <Badge color="red" variant="filled" size="sm" radius="md" fw={700}>
-            EXPIRED SCRAP
-          </Badge>
-        );
-      case "MANUAL_ADJUSTMENT":
-      case "ADJUSTMENT":
-        return (
-          <Badge color="orange" variant="light" size="sm" radius="md" fw={700}>
-            ADJUSTMENT
-          </Badge>
-        );
-      default:
-        return (
-          <Badge color="gray" variant="light" size="sm" radius="md" fw={700}>
-            {reason}
-          </Badge>
-        );
-    }
-  };
-
+export default function AdminLedgerPage() {
   return (
-    <Container size="xl" py="xl">
-      <Stack gap="lg">
-        {/* Header */}
-        <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+    <RequirePermission permission={PERMISSIONS.STOCK_ADJUST}>
+      <LedgerView />
+    </RequirePermission>
+  );
+}
+
+function LedgerView() {
+  const searchParams = useSearchParams();
+  const canOrders = useCan(PERMISSIONS.ORDERS_READ);
+
+  const [reason, setReason] = useState<AdminLedgerReason | null>(null);
+  const [productId, setProductId] = useState<string | null>(() => searchParams.get("productId"));
+  const [order, setOrder] = useState<{ id: string; number: string | null } | null>(() => {
+    const id = searchParams.get("orderId");
+    return id ? { id, number: null } : null;
+  });
+  const [range, setRange] = useState<DateRange>([null, null]);
+  const [appliedRange, setAppliedRange] = useState<DateRange>([null, null]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => () => exportAbort.current?.abort(), []);
+
+  const { data: linkedProduct } = useAdminProduct(searchParams.get("productId"));
+  const productInitial: ProductOption | null = linkedProduct
+    ? { id: linkedProduct.id, title: linkedProduct.title, sku: linkedProduct.sku, listingStatus: linkedProduct.listingStatus }
+    : null;
+
+  const filters = {
+    reason,
+    productId,
+    orderId: order?.id ?? null,
+    from: appliedRange[0],
+    to: appliedRange[1],
+  };
+  const list = useLedger({ page, limit, ...filters });
+  const rows = list.data?.items;
+  const orderLabel = order?.number ?? rows?.find((row) => row.orderId === order?.id)?.orderNumber ?? "selected order";
+
+  const activeFilters = (reason ? 1 : 0) + (productId ? 1 : 0) + (order ? 1 : 0) + (appliedRange[0] ? 1 : 0);
+  const clearFilters = () => {
+    setReason(null);
+    setProductId(null);
+    setOrder(null);
+    setRange([null, null]);
+    setAppliedRange([null, null]);
+    setPage(1);
+  };
+
+  const handleExport = async () => {
+    exportAbort.current?.abort();
+    const controller = new AbortController();
+    exportAbort.current = controller;
+    setExporting({ done: 0, total: list.data?.meta.total ?? 0 });
+    try {
+      const result = await fetchLedgerForExport(filters, {
+        maxRows: EXPORT_LIMIT,
+        signal: controller.signal,
+        onProgress: (done, total) => setExporting({ done, total }),
+      });
+      if (result.items.length === 0) {
+        notifications.show({ color: "info", title: "Nothing to export", message: "No ledger entries match these filters." });
+        return;
+      }
+      downloadCsv(`stock-ledger-${todayInDhaka()}.csv`, toCsv(result.items, CSV_COLUMNS));
+      notifications.show({
+        color: result.truncated ? "warning" : "success",
+        title: result.truncated ? "Export capped" : "Export ready",
+        message: result.truncated
+          ? `Exported the newest ${formatCount(result.items.length)} of ${formatCount(result.total)} entries. Narrow the filters to export the rest.`
+          : `${formatCount(result.items.length)} entries exported.`,
+      });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        notifications.show({ color: "danger", title: "Export failed", message: getErrorMessage(error) });
+      }
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const columns: DataTableColumn<AdminLedgerEntryDTO>[] = [
+    {
+      key: "date",
+      header: "Date",
+      width: 170,
+      cell: (row) => (
+        <Text size="sm" style={{ whiteSpace: "nowrap" }}>
+          {formatDhakaDateTime(row.createdAt)}
+        </Text>
+      ),
+    },
+    {
+      key: "product",
+      header: "Product",
+      skeletonWidth: "80%",
+      cell: (row) => (
+        <Box style={{ minWidth: 0 }}>
+          <Text size="sm" fw={600} lineClamp={1}>
+            {row.productTitle}
+          </Text>
+          <Text size="xs" c="dimmed" ff="var(--mo-font-monospace)">
+            {row.sku}
+          </Text>
+        </Box>
+      ),
+    },
+    {
+      key: "batch",
+      header: "Batch",
+      width: 170,
+      visibleFrom: "md",
+      cell: (row) =>
+        row.batchNumber ? (
           <Box>
-            <Group gap="xs" align="center">
-              <IconHistory size={28} color={myOxygenColors.primaryPink} />
-              <Title
-                order={2}
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  color: myOxygenColors.darkText,
-                  fontWeight: 700,
-                  letterSpacing: "-0.01em",
+            <Text size="sm" ff="var(--mo-font-monospace)">
+              {row.batchNumber}
+            </Text>
+            {row.expiryDate ? (
+              <Text size="xs" c="dimmed">
+                Exp. {formatCalendarDate(row.expiryDate)}
+              </Text>
+            ) : null}
+          </Box>
+        ) : (
+          <Text size="sm" c="dimmed">
+            —
+          </Text>
+        ),
+    },
+    {
+      key: "delta",
+      header: "Change",
+      align: "right",
+      width: 90,
+      cell: (row) => (
+        <Text
+          size="sm"
+          fw={700}
+          className="mo-tabular-nums"
+          c={row.changeDelta > 0 ? "var(--mo-color-text-success)" : "var(--mo-color-text-danger)"}
+          aria-label={`${row.changeDelta > 0 ? "Added" : "Removed"} ${formatCount(Math.abs(row.changeDelta))}`}
+        >
+          {formatSignedDelta(row.changeDelta)}
+        </Text>
+      ),
+    },
+    {
+      key: "balance",
+      header: "Balance",
+      align: "right",
+      width: 90,
+      cell: (row) => (
+        <Text size="sm" className="mo-tabular-nums">
+          {formatCount(row.balanceAfter)}
+        </Text>
+      ),
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      width: 160,
+      cell: (row) => {
+        const meta = reasonMeta(row.reason);
+        return (
+          <Badge variant="light" color={meta.color} tt="none" fw={600}>
+            {meta.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "order",
+      header: "Order",
+      width: 210,
+      visibleFrom: "lg",
+      cell: (row) =>
+        row.orderId && row.orderNumber ? (
+          <Group gap={4} wrap="nowrap">
+            {canOrders ? (
+              <Anchor component={Link} href={`/admin/orders?q=${encodeURIComponent(row.orderNumber)}`} size="sm" ff="var(--mo-font-monospace)">
+                {row.orderNumber}
+              </Anchor>
+            ) : (
+              <Text size="sm" ff="var(--mo-font-monospace)">
+                {row.orderNumber}
+              </Text>
+            )}
+            <Tooltip label="Only show this order">
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="gray"
+                aria-label={`Filter the ledger by order ${row.orderNumber}`}
+                onClick={() => {
+                  setOrder({ id: row.orderId ?? "", number: row.orderNumber });
+                  setPage(1);
                 }}
               >
-                Stock Audit Ledger
-              </Title>
-            </Group>
-            <Text size="sm" c="dimmed" mt={4}>
-              Immutable chronological record of every physical inventory change, batch deduction, and manual adjustment.
-            </Text>
-          </Box>
-
-          <Group gap="sm">
-            <Tooltip label="Refresh audit ledger">
-              <ActionIcon
-                variant="default"
-                size="lg"
-                radius="md"
-                onClick={() => refreshLedger()}
-                loading={isLedgerLoading}
-              >
-                <IconRefresh size={18} />
+                <IconFilter size={14} aria-hidden />
               </ActionIcon>
             </Tooltip>
           </Group>
-        </Group>
-
-        {/* Reason Filter Pills */}
-        <Paper p="md" radius="md" withBorder style={{ backgroundColor: "#FFFFFF" }}>
-          <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-            <Group gap={6} align="center">
-              <IconFilter size={18} color="#6B7280" />
-              <Text size="sm" fw={650} c={myOxygenColors.darkText}>
-                Filter Reason:
-              </Text>
-            </Group>
-
-            <Group gap="xs" wrap="wrap">
-              {REASON_OPTIONS.map((reason) => {
-                const isActive = activeReason === reason;
-                return (
-                  <Button
-                    key={reason}
-                    variant={isActive ? "filled" : "light"}
-                    color={isActive ? "pink" : "gray"}
-                    radius="xl"
-                    size="sm"
-                    onClick={() => {
-                      setActiveReason(reason);
-                      setPage(1); // Reset to first page on filter switch
-                    }}
-                    style={{
-                      backgroundColor: isActive ? myOxygenColors.primaryPink : undefined,
-                      fontWeight: isActive ? 700 : 500,
-                      transition: "all 150ms ease",
-                    }}
-                  >
-                    {reason === "EXPIRED_SCRAP" ? "Expired Scrap" : reason}
-                  </Button>
-                );
-              })}
-            </Group>
-          </Group>
-        </Paper>
-
-        {/* Ledger Table Container */}
-        <Paper radius="md" withBorder style={{ backgroundColor: "#FFFFFF", overflow: "hidden" }}>
-          {isLedgerLoading && entries.length === 0 ? (
-            <Box py={60} style={{ textAlign: "center" }}>
-              <Loader color="pink" size="md" />
-              <Text size="sm" c="dimmed" mt="sm">
-                Loading stock history ledger...
-              </Text>
-            </Box>
-          ) : ledgerError && entries.length === 0 ? (
-            <Box p="xl">
-              <Alert icon={<IconAlertTriangle size={18} />} title="Error Loading Ledger" color="red">
-                {ledgerError?.message ||
-                  "Could not retrieve audit ledger records. Please ensure backend service is reachable."}
-                <Group mt="sm">
-                  <Button size="xs" variant="outline" color="red" onClick={() => refreshLedger()}>
-                    Try Again
-                  </Button>
-                </Group>
-              </Alert>
-            </Box>
-          ) : entries.length === 0 ? (
-            <Box py={60} px="md" style={{ textAlign: "center" }}>
-              <IconFileAlert size={44} color="#9CA3AF" style={{ margin: "0 auto", strokeWidth: 1.5 }} />
-              <Text fw={600} size="md" c={myOxygenColors.darkText} mt="md">
-                No ledger entries recorded
-              </Text>
-              <Text size="sm" c="dimmed" mt={4} maw={400} mx="auto">
-                {activeReason !== "All"
-                  ? `No transactions found under reason "${activeReason}". Try selecting "All" to view full stock activity.`
-                  : "No inventory stock movements have been recorded yet."}
-              </Text>
-              {activeReason !== "All" && (
-                <Button
-                  variant="subtle"
-                  color="pink"
-                  size="xs"
-                  mt="sm"
-                  onClick={() => {
-                    setActiveReason("All");
-                    setPage(1);
-                  }}
-                >
-                  Clear Reason Filter
-                </Button>
-              )}
-            </Box>
-          ) : (
-            <Table.ScrollContainer minWidth={950}>
-              <Table highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
-                <Table.Thead style={{ backgroundColor: "#F9FAFB" }}>
-                  <Table.Tr>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Date / Time
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Product
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Batch #
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13, textAlign: "right" }}>
-                      Change (+/- Qty)
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Reason
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Note
-                    </Table.Th>
-                    <Table.Th style={{ color: myOxygenColors.textGray, fontWeight: 650, fontSize: 13 }}>
-                      Performed By
-                    </Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-
-                <Table.Tbody>
-                  {entries.map((entry) => {
-                    const delta = entry.changeDelta ?? 0;
-                    const isPositive = delta > 0;
-                    const isNegative = delta < 0;
-
-                    return (
-                      <Table.Tr key={entry.id}>
-                        {/* Date/Time */}
-                        <Table.Td>
-                          <Group gap={6} align="center">
-                            <IconCalendar size={14} color="#9CA3AF" />
-                            <Text size="xs" fw={550} c={myOxygenColors.darkText} style={{ whiteSpace: "nowrap" }}>
-                              {formatDateTime(entry.createdAt)}
-                            </Text>
-                          </Group>
-                        </Table.Td>
-
-                        {/* Product */}
-                        <Table.Td>
-                          <Stack gap={2}>
-                            <Text fw={600} size="sm" c={myOxygenColors.darkText} lineClamp={1}>
-                              {entry.product?.title || "Unknown Product"}
-                            </Text>
-                            {entry.product?.sku && (
-                              <Text size="xs" c="dimmed" style={{ fontFamily: "monospace" }}>
-                                SKU: {entry.product.sku}
-                              </Text>
-                            )}
-                          </Stack>
-                        </Table.Td>
-
-                        {/* Batch # */}
-                        <Table.Td>
-                          {entry.batch?.batchNumber ? (
-                            <Group gap={4} align="center">
-                              <IconBarcode size={15} color="#6B7280" />
-                              <Text fw={600} size="xs" c={myOxygenColors.darkText} style={{ fontFamily: "monospace" }}>
-                                {entry.batch.batchNumber}
-                              </Text>
-                            </Group>
-                          ) : (
-                            <Text size="xs" c="dimmed">
-                              —
-                            </Text>
-                          )}
-                        </Table.Td>
-
-                        {/* Change (+/- Qty) */}
-                        <Table.Td style={{ textAlign: "right" }}>
-                          <Group gap={4} justify="flex-end" align="center">
-                            {isPositive && <IconArrowUpRight size={16} color="#10B981" stroke={2.5} />}
-                            {isNegative && <IconArrowDownRight size={16} color="#EF4444" stroke={2.5} />}
-                            <Text
-                              fw={750}
-                              size="sm"
-                              c={isPositive ? "green.7" : isNegative ? "red.7" : "gray.6"}
-                            >
-                              {isPositive ? `+${delta}` : delta}
-                            </Text>
-                          </Group>
-                          <Text size="10px" c="dimmed" mt={1}>
-                            Bal: {entry.balanceAfter ?? "—"}
-                          </Text>
-                        </Table.Td>
-
-                        {/* Reason badge */}
-                        <Table.Td>
-                          {renderReasonBadge(entry.reason)}
-                        </Table.Td>
-
-                        {/* Note */}
-                        <Table.Td style={{ maxWidth: 220 }}>
-                          <Text size="xs" c={entry.note ? myOxygenColors.darkText : "dimmed"} lineClamp={2}>
-                            {entry.note || "—"}
-                          </Text>
-                        </Table.Td>
-
-                        {/* Performed By */}
-                        <Table.Td>
-                          {entry.performedBy ? (
-                            <Group gap={6} align="center">
-                              <IconUser size={14} color="#6B7280" />
-                              <Box>
-                                <Text size="xs" fw={600} c={myOxygenColors.darkText} lineClamp={1}>
-                                  {entry.performedBy.fullName || "Staff"}
-                                </Text>
-                                <Text size="10px" c="dimmed" tt="uppercase">
-                                  {entry.performedBy.role}
-                                </Text>
-                              </Box>
-                            </Group>
-                          ) : (
-                            <Badge color="gray" variant="dot" size="xs" radius="sm">
-                              Automated System
-                            </Badge>
-                          )}
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-
-          {/* Mantine Pagination Controls & Footer */}
-          <Box p="md" style={{ borderTop: "1px solid #F3F4F6", backgroundColor: "#FAFBFB" }}>
-            <Group justify="space-between" align="center" wrap="wrap" gap="md">
-              <Text size="xs" c="dimmed">
-                Showing {entries.length > 0 ? (page - 1) * pageSize + 1 : 0} to{" "}
-                {Math.min(page * pageSize, totalCount)} of {totalCount} total audit entries
-              </Text>
-
-              {totalPages > 1 && (
-                <Pagination
-                  total={totalPages}
-                  value={page}
-                  onChange={setPage}
-                  color="pink"
-                  radius="md"
-                  size="sm"
-                />
-              )}
-            </Group>
+        ) : (
+          <Text size="sm" c="dimmed">
+            —
+          </Text>
+        ),
+    },
+    {
+      key: "by",
+      header: "Performed by",
+      width: 170,
+      visibleFrom: "md",
+      cell: (row) =>
+        row.performedBy ? (
+          <Box>
+            <Text size="sm" lineClamp={1}>
+              {row.performedBy.fullName}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {roleLabel(row.performedBy.role)}
+            </Text>
           </Box>
-        </Paper>
-      </Stack>
-    </Container>
+        ) : (
+          <Text size="sm" c="dimmed">
+            System
+          </Text>
+        ),
+    },
+    {
+      key: "note",
+      header: "Note",
+      visibleFrom: "xl",
+      cell: (row) =>
+        row.note ? (
+          <Tooltip label={row.note} multiline w={320} disabled={row.note.length < 48}>
+            <Text size="sm" c="dimmed" lineClamp={2}>
+              {row.note}
+            </Text>
+          </Tooltip>
+        ) : (
+          <Text size="sm" c="dimmed">
+            —
+          </Text>
+        ),
+    },
+  ];
+
+  const meta = list.data?.meta;
+
+  return (
+    <Stack gap={0}>
+      <PageHeader
+        title="Stock Ledger"
+        description="Every stock movement — imports, sales, returns, adjustments and write-offs — newest first. Entries can't be edited. Times are in Dhaka."
+      />
+
+      <FilterBar
+        activeCount={activeFilters}
+        onReset={clearFilters}
+        actions={
+          <Button
+            variant="default"
+            leftSection={<IconDownload size={16} aria-hidden />}
+            onClick={() => void handleExport()}
+            loading={exporting !== null}
+            disabled={!meta || meta.total === 0}
+          >
+            Export CSV
+          </Button>
+        }
+      >
+        <Select
+          label="Reason"
+          placeholder="All reasons"
+          clearable
+          data={ADMIN_LEDGER_REASONS.map((value) => ({ value, label: REASON_META[value].label }))}
+          value={reason}
+          onChange={(value) => {
+            setReason(ADMIN_LEDGER_REASONS.find((item) => item === value) ?? null);
+            setPage(1);
+          }}
+          w={{ base: "100%", sm: 200 }}
+          radius="xl"
+        />
+        <ProductPicker
+          label="Product"
+          placeholder="All products"
+          clearable
+          value={productId}
+          initialProduct={productInitial}
+          onChange={(id) => {
+            setProductId(id);
+            setPage(1);
+          }}
+          w={{ base: "100%", sm: 280 }}
+          radius="xl"
+        />
+        <DateRangeFilter
+          value={range}
+          onChange={(next) => {
+            setRange(next);
+            if (isCompleteRange(next)) {
+              setAppliedRange(next);
+              setPage(1);
+            }
+          }}
+        />
+      </FilterBar>
+
+      {order || exporting ? (
+        <Group gap="sm" mb="md" wrap="wrap">
+          {order ? (
+            <Pill
+              withRemoveButton
+              onRemove={() => {
+                setOrder(null);
+                setPage(1);
+              }}
+              removeButtonProps={{ "aria-label": "Remove the order filter" }}
+              size="md"
+            >
+              Order {orderLabel}
+            </Pill>
+          ) : null}
+          {exporting ? (
+            <Text size="sm" c="dimmed" className="mo-tabular-nums" aria-live="polite">
+              Preparing export… {formatCount(exporting.done)} of {formatCount(Math.min(exporting.total, EXPORT_LIMIT))} rows
+            </Text>
+          ) : null}
+        </Group>
+      ) : null}
+
+      <DataTable
+        label="Stock ledger"
+        columns={columns}
+        rows={rows}
+        getRowKey={(row) => row.id}
+        loading={list.isLoading}
+        refreshing={list.isLoading && Boolean(list.data)}
+        error={list.error}
+        onRetry={() => void list.mutate()}
+        permission={PERMISSIONS.STOCK_ADJUST}
+        minWidth={980}
+        skeletonRows={10}
+        emptyIcon={<IconFileSpreadsheet stroke={1.6} />}
+        emptyTitle={activeFilters > 0 ? "No entries match these filters" : "No stock movements yet"}
+        emptyDescription={activeFilters > 0 ? "Try a wider date range or clear the filters." : "Importing a batch creates the first entry."}
+        pagination={
+          meta
+            ? {
+                page: meta.page,
+                totalPages: meta.totalPages,
+                total: meta.total,
+                limit: meta.limit,
+                onPageChange: setPage,
+                onLimitChange: (value) => {
+                  setLimit(value);
+                  setPage(1);
+                },
+                itemLabel: "entries",
+              }
+            : undefined
+        }
+      />
+    </Stack>
   );
 }

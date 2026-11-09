@@ -1,8 +1,35 @@
-node_modules
-dist
-coverage
-*.log
+# Build context for backend/Dockerfile. Keep secrets and local state out of
+# the context entirely (not just out of the final image).
+
+# --- Secrets: every env file except the committed template ---
 .env
 .env.*
-uploads/*
-!uploads/.gitkeep
+!.env.example
+
+# --- Dependencies & build output (installed/produced inside the image) ---
+node_modules
+dist
+build
+coverage
+*.tsbuildinfo
+*.log
+
+# --- Local state ---
+# Throwaway test cluster (scripts/test-db.ts) and runtime uploads (invoice PDFs)
+.testdb
+uploads
+
+# --- Tests (never run inside the image; CI runs them) ---
+**/*.test.ts
+src/tests
+bunfig.toml
+
+# --- Tooling / VCS / docs ---
+.git
+.gitignore
+.dockerignore
+Dockerfile
+README.md
+.vscode
+.idea
+.DS_Store

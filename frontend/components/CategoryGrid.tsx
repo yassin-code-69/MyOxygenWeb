@@ -1,173 +1,114 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
-import {
-  Container,
-  SimpleGrid,
-  Card,
-  Image,
-  Text,
-  Button,
-  Stack,
-  Box,
-  Group,
-} from "@mantine/core";
-import { IconArrowRight } from "@tabler/icons-react";
-import { myOxygenColors } from "../tokens";
+import { Anchor, Container, Group, Skeleton, Text } from "@mantine/core";
+import { IconArrowRight, IconRefresh } from "@tabler/icons-react";
+import { AnimatedSection } from "./AnimatedSection";
+import { BrandButton } from "./BrandButton";
+import { EmptyState } from "./EmptyState";
+import { ImageWithFallback } from "./ImageWithFallback";
+import { SectionHeader } from "./SectionHeader";
+import { formatProductCount, getCategoryVisual, rankShowcaseCategories } from "./storefront/category-visuals";
+import { useCategories } from "../hooks/catalog/use-categories";
+import classes from "./storefront/CategoryGrid.module.css";
 
-const categories = [
-  {
-    name: "Newborn",
-    slug: "newborn",
-    subtitle: "Essentials for your little bundle of joy",
-    image: "/images/cat-newborn.jpg",
-    icon: "/icons/newborn.svg",
-    bgColor: "#FFF1F2",
-    borderColor: "#FFE4E8",
-    btnColor: "#FF6B8B",
-    btnShadow: "rgba(255, 107, 139, 0.3)",
-  },
-  {
-    name: "Mother Care",
-    slug: "mother-care",
-    subtitle: "Complete care for healthy motherhood",
-    image: "/images/cat-mothercare.jpg",
-    icon: "/icons/mother-care.svg",
-    bgColor: "#ECFDF5",
-    borderColor: "#D1FAE5",
-    btnColor: "#4CAF7D",
-    btnShadow: "rgba(76, 175, 125, 0.3)",
-  },
-  {
-    name: "Skin Care",
-    slug: "skin-care",
-    subtitle: "Natural care for your glowing skin",
-    image: "/images/cat-skincare.jpg",
-    icon: "/icons/skin-care.svg",
-    bgColor: "#F5F3FF",
-    borderColor: "#EDE9FE",
-    btnColor: "#A78BFA",
-    btnShadow: "rgba(167, 139, 250, 0.3)",
-  },
-  {
-    name: "Inner Wear",
-    slug: "inner-wear",
-    subtitle: "Comfortable & confident every day",
-    image: "/images/cat-innerwear.jpg",
-    icon: "/icons/inner-wear.svg",
-    bgColor: "#FFF1F2",
-    borderColor: "#FFE4E8",
-    btnColor: "#FF6B8B",
-    btnShadow: "rgba(255, 107, 139, 0.3)",
-  },
-];
+const MAX_HOME_CATEGORIES = 8;
 
-export function CategoryGrid() {
+function CategoryCardSkeleton() {
   return (
-    <Box py={{ base: 35, md: 55 }}>
+    <li aria-hidden>
+      <div className={classes.card} style={{ "--card-bg": "var(--mo-color-surface)", "--card-border": "var(--mo-color-border-brand)" } as CSSProperties}>
+        <div className={classes.media}>
+          <Skeleton height="100%" radius="md" />
+        </div>
+        <div className={classes.body}>
+          <Skeleton height={18} width="70%" radius="xl" />
+          <Skeleton height={12} width="45%" radius="xl" />
+          <Skeleton height={28} width={90} radius="xl" mt={8} />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** "Shop by category" grid from `GET /catalog/categories` (2 columns on phones, hover lift). */
+export function CategoryGrid() {
+  const { categories, isLoaded, error, mutate } = useCategories();
+  const showcase = rankShowcaseCategories(categories).slice(0, MAX_HOME_CATEGORIES);
+
+  if (isLoaded && showcase.length === 0) {
+    return null;
+  }
+
+  return (
+    <AnimatedSection className={classes.section} aria-labelledby="home-categories-title">
       <Container size="xl">
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="lg">
-          {categories.map((cat) => (
-            <Card
-              key={cat.slug}
-              padding="md"
-              radius={24}
-              style={{
-                backgroundColor: cat.bgColor,
-                border: `1px solid ${cat.borderColor}`,
-                boxShadow: "0 6px 20px rgba(0, 0, 0, 0.03)",
-                transition: "transform 0.25s ease, box-shadow 0.25s ease",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              {/* Category Image */}
-              <Box
-                style={{
-                  height: 200,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  backgroundColor: "#FFFFFF",
-                }}
-              >
-                <Image
-                  src={cat.image}
-                  alt={cat.name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    transition: "transform 0.4s ease",
-                  }}
-                />
-              </Box>
+        <SectionHeader
+          eyebrow="Categories"
+          title={<span id="home-categories-title">Shop by Category</span>}
+          action={
+            <Anchor component={Link} href="/products" fw={700} size="sm">
+              <Group gap={4} component="span">
+                View all products
+                <IconArrowRight size={16} stroke={2.2} aria-hidden />
+              </Group>
+            </Anchor>
+          }
+        />
 
-              {/* Category Details */}
-              <Stack gap="xs" mt="md" style={{ flexGrow: 1 }}>
-                <Group gap="xs" align="center" wrap="nowrap">
-                  <Box
-                    style={{
-                      width: 32,
-                      height: 32,
-                      flexShrink: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Image
-                      src={cat.icon}
-                      alt={cat.name}
-                      w={32}
-                      h={32}
-                      fit="contain"
-                    />
-                  </Box>
-                  <Text
-                    fw={800}
-                    size="lg"
-                    c={myOxygenColors.darkText}
-                    style={{ fontFamily: "var(--font-poppins)" }}
-                  >
-                    {cat.name}
-                  </Text>
-                </Group>
-
-                <Text
-                  size="xs"
-                  c={myOxygenColors.textGray}
-                  style={{ minHeight: 34, lineHeight: 1.4 }}
-                >
-                  {cat.subtitle}
-                </Text>
-
-                {/* Explore Pill Button */}
-                <Box pt={4}>
-                  <Button
-                    component={Link}
-                    href={`/categories/${cat.slug}`}
-                    radius="xl"
-                    size="xs"
-                    rightSection={<IconArrowRight size={14} />}
-                    style={{
-                      backgroundColor: cat.btnColor,
-                      color: "#FFFFFF",
-                      fontWeight: 700,
-                      padding: "0 18px",
-                      height: 32,
-                      boxShadow: `0 4px 12px ${cat.btnShadow}`,
-                      transition: "transform 0.15s ease",
-                    }}
-                  >
-                    Explore
-                  </Button>
-                </Box>
-              </Stack>
-            </Card>
-          ))}
-        </SimpleGrid>
+        {error && !isLoaded ? (
+          <EmptyState
+            title="Categories could not be loaded"
+            description="Please check your connection and try again."
+            action={
+              <BrandButton variant="outline" leftSection={<IconRefresh size={16} aria-hidden />} onClick={() => mutate()}>
+                Retry
+              </BrandButton>
+            }
+          />
+        ) : (
+          <ul className={classes.grid}>
+            {!isLoaded
+              ? Array.from({ length: 4 }, (_, index) => <CategoryCardSkeleton key={index} />)
+              : showcase.map((category, index) => {
+                  const visual = getCategoryVisual(category, index);
+                  const photo = visual.image;
+                  const cardStyle = {
+                    "--card-bg": `var(--mantine-color-${visual.accent}-0)`,
+                    "--card-border": `var(--mantine-color-${visual.accent}-1)`,
+                    "--explore-bg": `var(--mantine-color-${visual.accent}-8)`,
+                  } as CSSProperties;
+                  return (
+                    <li key={category.id}>
+                      <Link href={`/categories/${category.slug}`} className={classes.card} style={cardStyle}>
+                        <div className={classes.media}>
+                          <ImageWithFallback
+                            src={photo ?? visual.icon}
+                            alt=""
+                            fill
+                            sizes="(max-width: 62em) 50vw, 300px"
+                            className={photo ? classes.image : `${classes.image} ${classes.iconOnly}`}
+                          />
+                        </div>
+                        <div className={classes.body}>
+                          <h3 className={classes.name}>{category.name}</h3>
+                          <Text size="xs" fw={600} c="var(--mo-color-text-secondary)" className="mo-tabular-nums">
+                            {formatProductCount(category.productCount)}
+                          </Text>
+                          {visual.description ? <span className={classes.tagline}>{visual.description}</span> : null}
+                          <span className={classes.explore} aria-hidden>
+                            Explore
+                            <IconArrowRight size={14} stroke={2.4} className={classes.exploreArrow} />
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+          </ul>
+        )}
       </Container>
-    </Box>
+    </AnimatedSection>
   );
 }

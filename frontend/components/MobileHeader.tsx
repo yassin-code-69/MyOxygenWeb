@@ -1,230 +1,117 @@
 "use client";
 
-import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  Box,
-  Group,
-  Text,
-  TextInput,
-  Badge,
-  ActionIcon,
-  UnstyledButton,
-  Image,
-} from "@mantine/core";
-import {
-  IconMapPin,
-  IconChevronRight,
-  IconSearch,
-  IconGridDots,
-  IconCamera,
-  IconBell,
-  IconCoins,
-  IconHeart,
-} from "@tabler/icons-react";
-import { myOxygenColors } from "../tokens";
+import { usePathname } from "next/navigation";
+import { ActionIcon, Box, Group, Skeleton, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconGift, IconLayoutGrid, IconMapPin } from "@tabler/icons-react";
+import { ImageWithFallback } from "./ImageWithFallback";
+import { SearchForm } from "./storefront/SearchForm";
+import { useScrolledPast } from "./storefront/use-scrolled-past";
+import { getCategoryVisual, rankShowcaseCategories } from "./storefront/category-visuals";
+import { useCategories } from "../hooks/catalog/use-categories";
+import classes from "./storefront/MobileHeader.module.css";
 
-const QUICK_CATEGORIES = [
-  {
-    name: "Newborn",
-    slug: "newborn",
-    icon: "/icons/newborn.svg",
-    bg: "#FFF0F3",
-  },
-  {
-    name: "Mother Care",
-    slug: "mother-care",
-    icon: "/icons/mother-care.svg",
-    bg: "#EDFBF3",
-  },
-  {
-    name: "Skin Care",
-    slug: "skin-care",
-    icon: "/icons/skin-care.svg",
-    bg: "#F5F3FF",
-  },
-  {
-    name: "Inner Wear",
-    slug: "inner-wear",
-    icon: "/icons/inner-wear.svg",
-    bg: "#FFF1F2",
-  },
-];
+/** Routes where the category strip helps browsing (hidden on product, checkout, account pages). */
+function showsCategoryStrip(pathname: string): boolean {
+  return pathname === "/" || pathname === "/products" || pathname.startsWith("/categories/");
+}
 
-export function MobileHeader() {
-  const router = useRouter();
-  const [query, setQuery] = useState("");
+function CategoryStrip({ pathname }: { pathname: string }) {
+  const { categories, isLoaded } = useCategories();
+  const items = rankShowcaseCategories(categories);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) {
-      router.push(`/products?q=${encodeURIComponent(query.trim())}`);
-    }
-  };
+  if (isLoaded && items.length === 0) {
+    return null;
+  }
 
   return (
-    <Box
-      className="mobile-header-wrapper"
-      style={{
-        background: "linear-gradient(180deg, #FFE8E1 0%, #FFF2EE 70%, #FFF8F6 100%)",
-        padding: "12px 14px 14px 14px",
-        borderBottom: "1px solid #FFE4EC",
-        position: "sticky",
-        top: 0,
-        zIndex: 1000,
-      }}
-    >
-      {/* 1. Top Location Bar & Reward Points Badge */}
-      <Group justify="space-between" align="center" mb={10}>
-        <Group gap={4} style={{ cursor: "pointer" }}>
-          <IconMapPin size={16} color={myOxygenColors.primaryPink} />
-          <Text size="xs" fw={700} c={myOxygenColors.darkText}>
-            Deliver to: Banani, Dhaka
-          </Text>
-          <IconChevronRight size={14} color="#9CA3AF" />
-        </Group>
-
-        <Group gap={6}>
-          <Badge
-            variant="gradient"
-            gradient={{ from: "#F59E0B", to: "#D97706", deg: 90 }}
-            radius="xl"
-            size="sm"
-            leftSection={<IconCoins size={12} color="#FFFFFF" />}
-            style={{ fontWeight: 700, paddingLeft: 6, paddingRight: 8 }}
-          >
-            20 ৳
-          </Badge>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            radius="xl"
-            size="sm"
-            onClick={() => router.push("/products")}
-          >
-            <IconBell size={18} color="#6B7280" />
-          </ActionIcon>
-        </Group>
-      </Group>
-
-      {/* 2. Floating Search Bar with Grid Category Pill and Camera Action */}
-      <form onSubmit={handleSearch}>
-        <Group gap={8} wrap="nowrap" align="center">
-          {/* Category Quick Selector Pill */}
-          <ActionIcon
-            size="lg"
-            radius="xl"
-            variant="white"
-            onClick={() => router.push("/products")}
-            style={{
-              backgroundColor: "#FFFFFF",
-              border: "1.5px solid #FBCFE8",
-              boxShadow: "0 2px 8px rgba(255, 107, 139, 0.08)",
-              minWidth: 42,
-              height: 42,
-            }}
-          >
-            <IconGridDots size={20} color={myOxygenColors.primaryPink} />
-          </ActionIcon>
-
-          {/* Search Pill */}
-          <TextInput
-            placeholder="Search mother & baby essentials..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            leftSection={<IconSearch size={16} color="#9CA3AF" />}
-            rightSection={
-              <ActionIcon variant="subtle" size="sm" color="gray">
-                <IconCamera size={16} color="#9CA3AF" />
-              </ActionIcon>
-            }
-            radius="xl"
-            size="sm"
-            style={{ flex: 1 }}
-            styles={{
-              input: {
-                backgroundColor: "#FFFFFF",
-                borderColor: "#FBCFE8",
-                height: 42,
-                fontSize: 13,
-                boxShadow: "0 2px 8px rgba(255, 107, 139, 0.06)",
-              },
-            }}
-          />
-        </Group>
-      </form>
-
-      {/* 3. Circular Category Icon Strip (Matching mobile view.jpeg) */}
-      <Box
-        mt={12}
-        style={{
-          display: "flex",
-          gap: 12,
-          overflowX: "auto",
-          paddingBottom: 4,
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-        }}
-      >
-        {QUICK_CATEGORIES.map((cat) => (
-          <Link
-            key={cat.slug}
-            href={cat.slug === "all" ? "/products" : `/categories/${cat.slug}`}
-            style={{ textDecoration: "none" }}
-          >
-            <Box
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                width: 62,
-                flexShrink: 0,
-              }}
-            >
-              <Box
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: "50%",
-                  backgroundColor: cat.bg,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.8)",
-                  transition: "transform 150ms ease",
-                }}
+    <Box component="nav" hiddenFrom="sm" aria-label="Shop by category" className={classes.strip}>
+      {isLoaded
+        ? items.map((category, index) => {
+            const visual = getCategoryVisual(category, index);
+            const Glyph = visual.glyph;
+            const href = `/categories/${category.slug}`;
+            const active = pathname === href;
+            return (
+              <Link
+                key={category.id}
+                href={href}
+                className={classes.stripItem}
+                data-active={active || undefined}
+                aria-current={active ? "page" : undefined}
               >
-                <Image src={cat.icon} alt={cat.name} w={28} h={28} fit="contain" />
-              </Box>
-              <Text
-                size="11px"
-                mt={4}
-                fw={600}
-                c={myOxygenColors.darkText}
-                ta="center"
-                style={{
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  width: "100%",
-                }}
-              >
-                {cat.name}
-              </Text>
-            </Box>
-          </Link>
-        ))}
+                <Box className={classes.stripIcon} bg={`${visual.accent}.0`} c={`${visual.accent}.8`}>
+                  {visual.icon ? (
+                    <ImageWithFallback src={visual.icon} alt="" width={30} height={30} />
+                  ) : (
+                    <Glyph size={24} stroke={1.8} aria-hidden />
+                  )}
+                </Box>
+                <span className={classes.stripLabel}>{category.name}</span>
+              </Link>
+            );
+          })
+        : Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className={classes.stripItem} aria-hidden>
+              <Skeleton circle height={52} />
+              <Skeleton height={10} width={48} radius="xl" />
+            </div>
+          ))}
+    </Box>
+  );
+}
+
+/**
+ * Mobile storefront header (< 768px), SPECIFICATION §4.
+ *
+ * - Peach top bar: delivery location label (Dhaka) and a Rewards entry. There is no
+ *   points programme in the backend, so Rewards shows NO balance and is disabled with
+ *   a "coming soon" tooltip.
+ * - Sticky floating search pill (submits to `/products?q=`) with the grid action → `/products`.
+ *   The camera (image search) icon was removed: no image-search backend exists.
+ * - Circular category strip from `GET /catalog/categories` → `/categories/[slug]`.
+ */
+export function MobileHeader() {
+  const pathname = usePathname();
+  const scrolled = useScrolledPast(50);
+
+  return (
+    <>
+      <Box hiddenFrom="sm" className={classes.topBar}>
+        <Group justify="space-between" wrap="nowrap" gap="sm">
+          <span className={classes.location}>
+            <IconMapPin size={16} stroke={2} color="var(--mo-color-text-brand)" aria-hidden />
+            <Text component="span" inherit truncate="end">
+              Dhaka, Bangladesh
+            </Text>
+          </span>
+          <Tooltip label="Reward points are coming soon" events={{ hover: true, focus: true, touch: true }}>
+            <UnstyledButton className={classes.reward} aria-disabled="true" aria-label="Rewards (coming soon)">
+              <IconGift size={14} stroke={2} aria-hidden />
+              Rewards
+            </UnstyledButton>
+          </Tooltip>
+        </Group>
       </Box>
 
-      <style jsx global>{`
-        @media (min-width: 768px) {
-          .mobile-header-wrapper {
-            display: none !important;
-          }
-        }
-      `}</style>
-    </Box>
+      {/* Sibling of the page content (not nested) so `position: sticky` spans the whole page. */}
+      <Box hiddenFrom="sm" className={classes.searchRow} data-scrolled={scrolled || undefined}>
+        <ActionIcon
+          component={Link}
+          href="/products"
+          size={42}
+          radius="xl"
+          variant="white"
+          color="primaryPink"
+          className={classes.gridAction}
+          aria-label="Browse all products"
+        >
+          <IconLayoutGrid size={20} stroke={1.8} />
+        </ActionIcon>
+        <SearchForm className={classes.search} size="md" withSubmit={false} />
+      </Box>
+
+      {showsCategoryStrip(pathname) ? <CategoryStrip pathname={pathname} /> : null}
+    </>
   );
 }

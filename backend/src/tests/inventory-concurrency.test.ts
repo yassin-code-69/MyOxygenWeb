@@ -1,147 +1,178 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { InventoryService } from "../services/inventory.service";
-import { db, categories, products, productBatches, stockHistoryLogs } from "../db";
-import { eq, and } from "drizzle-orm";
+/**
+ * FEFO under concurrency (real local test database).
+ *
+ * Each "checkout" mirrors the order flow: one transaction that inserts the
+ * order row, allocates FEFO (row locks) and reserves the stock. Concurrent
+ * checkouts must serialize on the product's rows, drain the earliest-expiring
+ * batch first, spill into the next batch, never oversell and fail cleanly
+ * with INSUFFICIENT_STOCK once stock is gone.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { and, eq, inArray } from "drizzle-orm";
+import { db } from "../db/client";
+import { orders, productBatches, products, stockHistoryLogs } from "../db/schema/tables";
+import { addDays, todayInBusinessTz } from "../lib/dates";
+import { AppError } from "../lib/errors";
+import { inventoryService, type BatchAllocation } from "../services/inventory.service";
+import { FixtureRegistry, uniqueId, type TestUser } from "./inventory-fixtures";
 
-describe("Phase 3 & 7: Concurrency Race Condition Testing & FEFO Stock Reservation", () => {
-  const inventoryService = new InventoryService();
-  const testRunId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const fixtures = new FixtureRegistry();
+const today = todayInBusinessTz();
+let customer: TestUser;
+let categoryId: string;
 
-  let testCategoryId: string;
-  let testProductId: string;
-  let testBatchId: string;
+interface CheckoutOutcome {
+  ok: boolean;
+  orderId?: string;
+  allocations?: BatchAllocation[];
+  error?: unknown;
+}
 
-  beforeAll(async () => {
-    // 1. Seed a test category
-    const [category] = await db
-      .insert(categories)
-      .values({
-        name: `Race Test Cat ${testRunId}`,
-        slug: `race-cat-${testRunId}`,
-      })
-      .returning();
-    testCategoryId = category.id;
+/** One checkout-style transaction; `lockOrder` records allocation order while the locks are held. */
+async function checkout(productId: string, quantity: number, lockOrder: BatchAllocation[][]): Promise<CheckoutOutcome> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [order] = await tx
+        .insert(orders)
+        .values({
+          orderNumber: uniqueId("ORD-C-").toUpperCase(),
+          userId: customer.id,
+          paymentMethod: "COD",
+          shippingAddress: {
+            fullName: "Race Tester",
+            phone: "01700000000",
+            addressLine1: "Road 1",
+            city: "Dhaka",
+            district: "Dhaka",
+            postalCode: "1207",
+          },
+          subtotal: "0.00",
+          deliveryFee: "0.00",
+          total: "0.00",
+        })
+        .returning({ id: orders.id });
+      if (!order) throw new Error("order insert failed");
 
-    // 2. Seed a test product
-    const [product] = await db
-      .insert(products)
-      .values({
-        title: `Race Test Hydrating Cream ${testRunId}`,
-        slug: `race-test-cream-${testRunId}`,
-        categoryId: testCategoryId,
-        description: "Concurrency race condition test perishable item",
-        basePrice: "500.00",
-        costPrice: "300.00",
-        images: ["https://example.com/cream.png"],
-        sku: `SKU-CR-${testRunId}`,
-        requiresBatchTracking: true,
-        isActive: true,
-      })
-      .returning();
-    testProductId = product.id;
+      const allocations = await inventoryService.allocateBatchesFEFO(productId, quantity, tx);
+      lockOrder.push(allocations);
+      await inventoryService.reserveStock(allocations, order.id, customer.id, tx);
+      return { ok: true, orderId: order.id, allocations };
+    });
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
 
-    // 3. Seed a single batch having availableQuantity = 5
-    const [batch] = await db
-      .insert(productBatches)
-      .values({
-        productId: testProductId,
-        batchNumber: `BATCH-RACE-${testRunId}`,
-        manufactureDate: "2025-01-01",
-        expiryDate: "2028-12-31",
-        initialQuantity: 5,
-        availableQuantity: 5,
-      })
-      .returning();
-    testBatchId = batch.id;
-  });
+async function quantities(batchIds: string[]): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ id: productBatches.id, availableQuantity: productBatches.availableQuantity })
+    .from(productBatches)
+    .where(inArray(productBatches.id, batchIds));
+  return new Map(rows.map((row) => [row.id, row.availableQuantity]));
+}
 
-  afterAll(async () => {
-    // Clean up test rows
-    if (testBatchId) {
-      await db
-        .delete(stockHistoryLogs)
-        .where(eq(stockHistoryLogs.batchId, testBatchId));
-      await db
-        .delete(productBatches)
-        .where(eq(productBatches.id, testBatchId));
-    }
-    if (testProductId) {
-      await db
-        .delete(stockHistoryLogs)
-        .where(eq(stockHistoryLogs.productId, testProductId));
-      await db.delete(products).where(eq(products.id, testProductId));
-    }
-    if (testCategoryId) {
-      await db.delete(categories).where(eq(categories.id, testCategoryId));
-    }
-  });
+beforeAll(async () => {
+  customer = await fixtures.user("CUSTOMER");
+  categoryId = (await fixtures.category("Concurrency")).id;
+});
 
+afterAll(async () => {
+  await fixtures.cleanup();
+});
+
+describe("concurrent FEFO checkouts", () => {
   it(
-    "should handle 10 concurrent reserveStock() requests for 1 unit each on a batch of 5: exactly 5 succeed, 5 fail, remaining stock is 0, and 5 PURCHASE logs exist",
+    "20 concurrent 1-unit checkouts over two batches (6 + 9): 15 succeed in FEFO order, 5 fail, no oversell",
     async () => {
-      const concurrencyRequests = 10;
-      let fulfilledCount = 0;
-      let rejectedCount = 0;
-      const rejectedErrors: Error[] = [];
+      const product = await fixtures.product({ categoryId, requiresBatchTracking: true });
+      const early = await fixtures.batch(product.id, addDays(today, 15), 6, "EARLY");
+      const late = await fixtures.batch(product.id, addDays(today, 120), 9, "LATE");
+      const lockOrder: BatchAllocation[][] = [];
 
-      // Fires 10 concurrent requests calling inventoryService.reserveStock() for 1 unit each using Promise.all()
-      await Promise.all(
-        Array.from({ length: concurrencyRequests }, async (_, index) => {
-          const orderId = `ORD-RACE-${testRunId}-${index}`;
-          try {
-            await inventoryService.reserveStock(
-              [{ batchId: testBatchId, quantity: 1 }],
-              orderId,
-            );
-            fulfilledCount++;
-          } catch (error) {
-            rejectedCount++;
-            rejectedErrors.push(error as Error);
-          }
-        }),
+      const outcomes = await Promise.all(Array.from({ length: 20 }, () => checkout(product.id, 1, lockOrder)));
+      for (const outcome of outcomes) {
+        if (outcome.orderId) fixtures.trackOrder(outcome.orderId);
+      }
+
+      const succeeded = outcomes.filter((o) => o.ok);
+      const failed = outcomes.filter((o) => !o.ok);
+      expect(succeeded).toHaveLength(15);
+      expect(failed).toHaveLength(5);
+      for (const failure of failed) {
+        expect(failure.error).toBeInstanceOf(AppError);
+        const error = failure.error as AppError;
+        expect(error.code).toBe("INSUFFICIENT_STOCK");
+        expect(error.details).toEqual({ productId: product.id, requested: 1, available: 0 });
+      }
+
+      // Allocation order under the locks: the 6 earliest-expiring units first, then the later batch.
+      const sequence = lockOrder.flat().map((a) => a.batchId);
+      expect(sequence).toEqual([...Array(6).fill(early.id), ...Array(9).fill(late.id)]);
+
+      const left = await quantities([early.id, late.id]);
+      expect(left.get(early.id)).toBe(0);
+      expect(left.get(late.id)).toBe(0);
+
+      const purchases = await db
+        .select({ orderId: stockHistoryLogs.orderId, changeDelta: stockHistoryLogs.changeDelta })
+        .from(stockHistoryLogs)
+        .where(and(eq(stockHistoryLogs.productId, product.id), eq(stockHistoryLogs.reason, "PURCHASE")));
+      expect(purchases).toHaveLength(15);
+      expect(new Set(purchases.map((p) => p.orderId))).toEqual(
+        new Set<string | null>(succeeded.flatMap((s) => (s.orderId ? [s.orderId] : []))),
+      );
+      expect(purchases.every((p) => p.changeDelta === -1)).toBe(true);
+
+      // Failed checkouts rolled back their order rows.
+      const persistedOrders = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.userId, customer.id));
+      expect(persistedOrders.map((o) => o.id).sort()).toEqual(
+        succeeded.flatMap((s) => (s.orderId ? [s.orderId] : [])).sort(),
       );
 
-      // Asserts:
-      // Exactly 5 promises resolve successfully
-      expect(fulfilledCount).toBe(5);
-
-      // Exactly 5 promises reject with insufficient stock error
-      expect(rejectedCount).toBe(5);
-      expect(rejectedErrors).toHaveLength(5);
-      for (const err of rejectedErrors) {
-        expect(err.message).toMatch(/race condition|insufficient/i);
-      }
-
-      // The remaining availableQuantity in the database is exactly 0 (never negative)
-      const [batchInDb] = await db
-        .select({
-          id: productBatches.id,
-          availableQuantity: productBatches.availableQuantity,
-        })
-        .from(productBatches)
-        .where(eq(productBatches.id, testBatchId));
-
-      expect(batchInDb).toBeDefined();
-      expect(batchInDb.availableQuantity).toBe(0);
-
-      // Exactly 5 PURCHASE audit rows are logged in stockHistoryLogs
-      const auditLogs = await db
-        .select()
-        .from(stockHistoryLogs)
-        .where(
-          and(
-            eq(stockHistoryLogs.batchId, testBatchId),
-            eq(stockHistoryLogs.reason, "PURCHASE"),
-          ),
-        );
-
-      expect(auditLogs).toHaveLength(5);
-      for (const log of auditLogs) {
-        expect(log.changeDelta).toBe(-1);
-        expect(log.balanceAfter).toBeGreaterThanOrEqual(0);
-        expect(log.balanceAfter).toBeLessThanOrEqual(4);
-      }
+      // Sold out → hidden automatically.
+      const [state] = await db
+        .select({ isActive: products.isActive, autoDeactivatedAt: products.autoDeactivatedAt })
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(state?.isActive).toBe(false);
+      expect(state?.autoDeactivatedAt).not.toBeNull();
     },
-    30000,
+    60_000,
+  );
+
+  it(
+    "concurrent 2-unit checkouts spill across batches (5 + 10): 7 succeed, 1 fails, one order spans both batches",
+    async () => {
+      const product = await fixtures.product({ categoryId, requiresBatchTracking: true });
+      const early = await fixtures.batch(product.id, addDays(today, 10), 5, "SPILL-EARLY");
+      const late = await fixtures.batch(product.id, addDays(today, 90), 10, "SPILL-LATE");
+      const lockOrder: BatchAllocation[][] = [];
+
+      const outcomes = await Promise.all(Array.from({ length: 8 }, () => checkout(product.id, 2, lockOrder)));
+      for (const outcome of outcomes) {
+        if (outcome.orderId) fixtures.trackOrder(outcome.orderId);
+      }
+
+      const succeeded = outcomes.filter((o) => o.ok);
+      expect(succeeded).toHaveLength(7);
+      const failure = outcomes.find((o) => !o.ok)?.error;
+      expect(failure).toBeInstanceOf(AppError);
+      expect((failure as AppError).details).toEqual({ productId: product.id, requested: 2, available: 1 });
+
+      const split = succeeded.filter((s) => (s.allocations ?? []).length === 2);
+      expect(split).toHaveLength(1);
+      expect(split[0]?.allocations?.map((a) => [a.batchId, a.quantity])).toEqual([
+        [early.id, 1],
+        [late.id, 1],
+      ]);
+
+      const left = await quantities([early.id, late.id]);
+      expect(left.get(early.id)).toBe(0);
+      expect(left.get(late.id)).toBe(1);
+    },
+    60_000,
   );
 });

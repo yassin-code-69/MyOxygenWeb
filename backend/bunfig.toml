@@ -1,0 +1,3 @@
+[test]
+# Refuses to run unless DATABASE_URL points at a local database (see src/tests/setup.ts).
+preload = ["./src/tests/setup.ts"]

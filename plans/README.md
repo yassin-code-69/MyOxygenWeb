@@ -19,6 +19,13 @@ All plans are strictly self-contained. Each plan is written for an executor suba
 
 **Status Values**: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED (reason)` | `REJECTED (rationale)`
 
+> **Remediation, 2026-11-09.** An audit of the code against `context/phase-01.md`…`phase-10.md` found that these plans had been marked `DONE` while many requirements were missing or broken (mock catalog data, an unguarded admin portal, committed secrets, no zero-stock auto-deactivation, flash-sale prices not charged, and more). The work was redone on branch `fix/audit-remediation-supabase`:
+> - the database was rebuilt on a new Supabase project from clean, journaled migrations (`backend/src/migrations/0000`–`0004`, RLS on every table);
+> - backend, storefront, checkout and admin were remediated against the specs;
+> - CI, Docker, tests (local throwaway Postgres only) and documentation were added.
+>
+> The statuses below now reflect that remediated state. See `README.md`, `docs/API_CONTRACT.md` and `docs/DEPLOYMENT.md`.
+
 ---
 
 ## Parallel Execution Strategy

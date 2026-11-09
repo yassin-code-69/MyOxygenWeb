@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { NotFoundClient } from "./NotFoundClient";
 
 export const metadata: Metadata = {
-  title: "404 - Page Not Found | My Oxygen",
+  title: "Page not found",
   description:
-    "Sorry, the mother and baby care page you are looking for could not be found. Explore our safe, gentle products across Bangladesh.",
+    "Sorry, the page you are looking for could not be found. Explore our mother and baby care products delivered across Bangladesh.",
+  robots: { index: false },
 };
 
 export default function NotFound() {

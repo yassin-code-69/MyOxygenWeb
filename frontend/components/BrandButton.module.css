@@ -1,0 +1,43 @@
+/* BrandButton: brand shadows + hover lift. Only `transform` is animated. */
+
+.root {
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.root[data-brand-variant="primary"] {
+  box-shadow: var(--mo-shadow-button);
+}
+
+.root[data-brand-variant="secondary"] {
+  box-shadow: var(--mo-shadow-button-secondary);
+}
+
+.root[data-brand-variant="accent"] {
+  box-shadow: var(--mo-shadow-button-accent);
+}
+
+.root:disabled,
+.root[data-disabled] {
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .root:where(:not(:disabled, [data-disabled], [data-loading])):hover {
+    transform: translateY(-2px);
+  }
+}
+
+.root:where(:not(:disabled, [data-disabled], [data-loading])):active {
+  transform: translateY(0) scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    transition: none;
+  }
+
+  .root:hover,
+  .root:active {
+    transform: none;
+  }
+}

@@ -1,6 +1,34 @@
+# Build context for frontend/Dockerfile.
+# Next.js reads .env* files during `next build` and inlines NEXT_PUBLIC_*
+# values, so NO env file may enter the context: the API URL is passed as the
+# NEXT_PUBLIC_API_URL build arg instead.
+
+# --- Env files (except the committed template) ---
+.env
+.env.*
+!.env.example
+
+# --- Dependencies & build output (produced inside the image) ---
 node_modules
 .next
+out
+build
+dist
 coverage
-*.log
-.env*.local
 *.tsbuildinfo
+*.log
+
+# --- Tests ---
+**/*.test.ts
+**/*.test.tsx
+**/__tests__
+
+# --- Tooling / VCS / docs ---
+.git
+.gitignore
+.dockerignore
+Dockerfile
+README.md
+.vscode
+.idea
+.DS_Store

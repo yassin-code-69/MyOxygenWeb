@@ -1,0 +1,138 @@
+/*
+ * Desktop / tablet header (>= 48em = 768px). Scroll-aware: after 50px the solid cream
+ * layer fades out to reveal a frosted-glass surface and a soft brand shadow fades in.
+ * Only `opacity` is animated (the layers are pseudo-elements).
+ */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: var(--mo-z-header);
+  isolation: isolate;
+  border-bottom: 1px solid var(--mo-color-border-brand);
+  background-color: color-mix(in srgb, var(--mo-color-surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+/* Solid layer shown at the top of the page (fades out once scrolled). */
+.header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--mo-color-surface);
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity var(--mo-duration-moderate) var(--mo-ease-out);
+}
+
+/* Shadow layer (fades in once scrolled). */
+.header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  box-shadow: var(--mo-shadow-navbar);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--mo-duration-moderate) var(--mo-ease-out);
+}
+
+.header[data-scrolled]::before {
+  opacity: 0;
+}
+
+.header[data-scrolled]::after {
+  opacity: 1;
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  min-height: 68px;
+}
+
+.brand {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--mo-radius-sm);
+}
+
+.brandName {
+  font-family: var(--mo-font-heading);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--mo-color-primary-6);
+}
+
+.brandTagline {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--mo-color-text-muted);
+}
+
+.nav {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-radius: var(--mo-radius-xl);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--mo-color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navLink:hover {
+  color: var(--mo-color-text-brand);
+  background-color: var(--mo-color-surface-brand-tint);
+}
+
+.navLink[data-active] {
+  color: var(--mo-color-text-brand);
+  background-color: var(--mo-color-surface-brand-tint);
+}
+
+.search {
+  flex: 1 1 auto;
+  min-width: 140px;
+  max-width: 420px;
+  margin-inline: auto;
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.menuCount {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header::before,
+  .header::after {
+    transition: none;
+  }
+}

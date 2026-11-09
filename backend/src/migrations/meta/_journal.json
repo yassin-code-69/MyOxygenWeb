@@ -5,8 +5,36 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1790059243290,
-      "tag": "0000_glorious_lucky_pierre",
+      "when": 1794222663185,
+      "tag": "0000_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794222673866,
+      "tag": "0001_search_and_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794225217662,
+      "tag": "0002_auto_deactivation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794227758772,
+      "tag": "0003_invoice_payment_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794230041630,
+      "tag": "0004_normalize_user_phones",
       "breakpoints": true
     }
   ]

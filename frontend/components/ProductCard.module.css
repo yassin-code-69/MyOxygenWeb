@@ -1,0 +1,170 @@
+/*
+ * ProductCard + ProductCardSkeleton share these dimensions so the skeleton
+ * occupies exactly the same box as the loaded card (zero CLS).
+ * Only `transform` and `opacity` are animated.
+ */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  isolation: isolate;
+  background-color: var(--mo-color-surface);
+  transition: transform var(--mo-duration-base) var(--mo-ease-out);
+}
+
+/* Hover shadow lives on a pseudo-element so we fade its opacity instead of animating box-shadow. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow: var(--mo-shadow-card-hover);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--mo-duration-base) var(--mo-ease-out);
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  margin-bottom: 6px;
+}
+
+.discount {
+  box-shadow: var(--mo-shadow-badge);
+  font-variant-numeric: tabular-nums;
+}
+
+.media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 12px;
+  background-color: var(--mo-color-surface-muted);
+}
+
+.image {
+  object-fit: contain;
+  padding: 8px;
+  transition: transform var(--mo-duration-moderate) var(--mo-ease-out);
+}
+
+.imageDimmed {
+  opacity: 0.55;
+}
+
+.stockBadge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 1;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--mo-font-body);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--mo-color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stretched link: the title link covers the whole card (valid HTML — no buttons nested in <a>). */
+.titleLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.titleLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.titleLink:focus-visible {
+  outline: none;
+}
+
+.titleLink:focus-visible::after {
+  outline: 2px solid var(--mo-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  min-height: 26px;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+/* Interactive controls sit above the stretched link. */
+.control {
+  position: relative;
+  z-index: 2;
+}
+
+.cta {
+  position: relative;
+  z-index: 2;
+  height: 38px;
+  margin-top: 12px;
+}
+
+/* Skeleton cards share the layout but never react to hover. */
+.static {
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .card:not(.static):hover {
+    transform: translateY(-4px);
+  }
+
+  .card:not(.static):hover::before {
+    opacity: 1;
+  }
+
+  .card:hover .image {
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card::before,
+  .image {
+    transition: none;
+  }
+
+  .card:hover,
+  .card:hover .image {
+    transform: none;
+  }
+}

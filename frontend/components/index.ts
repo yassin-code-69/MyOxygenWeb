@@ -1,8 +1,23 @@
+// ---------------------------------------------------------------------------
+// Design-system primitives (owned by the design system — stable public API)
+// ---------------------------------------------------------------------------
+export * from "./AppProviders";
 export * from "./BrandButton";
+export * from "./Price";
+export * from "./ImageWithFallback";
 export * from "./ProductCard";
 export * from "./ProductCardSkeleton";
 export * from "./CountDownTimer";
 export * from "./StatusBadge";
+export * from "./AnimatedSection";
+export * from "./PageTransition";
+export * from "./PageProgressBar";
+export * from "./EmptyState";
+export * from "./SectionHeader";
+
+// ---------------------------------------------------------------------------
+// Storefront chrome & sections
+// ---------------------------------------------------------------------------
 export * from "./Navbar";
 export * from "./HeroBanner";
 export * from "./FeaturesBar";
