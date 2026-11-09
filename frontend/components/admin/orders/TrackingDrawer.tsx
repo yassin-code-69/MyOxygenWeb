@@ -1,12 +1,13 @@
 "use client";
 
 import { Alert, Badge, Box, Button, Drawer, Group, Paper, SimpleGrid, Skeleton, Stack, Text } from "@mantine/core";
-import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import { IconAlertTriangle, IconRefresh, IconTruckDelivery } from "@tabler/icons-react";
 import { StatusBadge } from "../../StatusBadge";
 import { useAdminOrderTracking } from "../../../hooks/admin/use-admin-orders";
 import { PERMISSIONS } from "../../../types/auth";
 import { formatDhakaDateTime, humanizeEnum } from "../format";
 import { QueryError } from "../QueryError";
+import { ModalTitle } from "../products/ModalTitle";
 import { courierName } from "./order-utils";
 import { OrderTimeline } from "./OrderTimeline";
 
@@ -20,7 +21,7 @@ export function TrackingDrawer({ orderId, onClose }: TrackingDrawerProps) {
   const { data, error, isLoading, isValidating, mutate } = useAdminOrderTracking(orderId);
 
   return (
-    <Drawer opened={orderId !== null} onClose={onClose} position="right" size="md" title={<Text fw={700}>Shipment tracking</Text>}>
+    <Drawer opened={orderId !== null} onClose={onClose} position="right" size="md" title={<ModalTitle icon={<IconTruckDelivery size={18} />}>Shipment tracking</ModalTitle>}>
       {isLoading && !data ? (
         <Stack gap="md">
           <Skeleton height={24} width="60%" />
@@ -39,6 +40,7 @@ export function TrackingDrawer({ orderId, onClose }: TrackingDrawerProps) {
               <StatusBadge status={data.status} />
             </Box>
             <Button
+              radius="xl"
               size="xs"
               variant="default"
               leftSection={<IconRefresh size={14} aria-hidden />}

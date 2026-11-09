@@ -1,0 +1,52 @@
+/* Payments pages. Tokens only. */
+
+.orderLink {
+  display: inline-block;
+  font-family: var(--mo-font-monospace);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 700;
+  color: var(--mo-color-text);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--mo-radius-xs);
+}
+
+.orderLink:hover {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}
+
+.methodIcon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--mo-radius-xl);
+}
+
+.methodIcon[data-method="COD"] {
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-secondary-8);
+}
+
+.methodIcon[data-method="ONLINE_GATEWAY"] {
+  background-color: var(--mo-color-accent-0);
+  color: var(--mo-color-accent-8);
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--mo-radius-sm);
+}
+
+a.statusRow:hover .statusLabel {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}

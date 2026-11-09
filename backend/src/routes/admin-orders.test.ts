@@ -561,6 +561,7 @@ describe("GET /admin/analytics/summary", () => {
         quantity: 1,
         unitPrice: fixture.total,
         totalPrice: fixture.total,
+        unitCost: "300.00",
       });
     }
   });
@@ -577,7 +578,14 @@ describe("GET /admin/analytics/summary", () => {
     });
     expect(res.status).toBe(200);
     const summary = res.body.data;
-    expect(summary.range).toEqual({ from: day, to: nextDay, timezone: "Asia/Dhaka" });
+    expect(summary.range).toEqual({
+      from: day,
+      to: nextDay,
+      timezone: "Asia/Dhaka",
+      previousFrom: addDays(day, -2),
+      previousTo: addDays(day, -1),
+      granularity: "day",
+    });
     expect(summary.totalRevenue).toBe(350.5);
     expect(summary.totalOrders).toBe(4);
     expect(summary.revenueOrderCount).toBe(2);
@@ -595,15 +603,25 @@ describe("GET /admin/analytics/summary", () => {
       { date: nextDay, revenue: 250.5, orderCount: 1 },
     ]);
     expect(summary.topProducts).toEqual([
-      { productId, title: `Admin Diaper Pack ${RUN}`, sku: `ADM-DIAPER-${RUN}`, unitsSold: 2, revenue: 350.5 },
+      {
+        productId,
+        title: `Admin Diaper Pack ${RUN}`,
+        slug: `admin-diaper-pack-${RUN}`,
+        sku: `ADM-DIAPER-${RUN}`,
+        image: null,
+        categoryName: `Admin Orders ${RUN}`,
+        unitsSold: 2,
+        revenue: 350.5,
+      },
     ]);
   });
 
-  it("returns 30 days of revenue, recent orders and inventory counters by default", async () => {
+  it("defaults to the last 7 days and returns recent orders and inventory counters", async () => {
     const res = await call<TelemetrySummaryDTO>("GET", "/admin/analytics/summary", { token: inventoryManager.token });
     expect(res.status).toBe(200);
     const summary = res.body.data;
-    expect(summary.dailyRevenue).toHaveLength(30);
+    expect(summary.range).toMatchObject({ from: addDays(TODAY, -6), to: TODAY, granularity: "day" });
+    expect(summary.dailyRevenue).toHaveLength(7);
     expect(summary.dailyRevenue.at(-1)?.date).toBe(TODAY);
     expect(summary.recentOrders.length).toBeGreaterThan(0);
     expect(summary.recentOrders.length).toBeLessThanOrEqual(5);

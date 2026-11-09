@@ -1,0 +1,165 @@
+/* Settings pages (roles, system status). Tokens only; only opacity / transform animate. */
+
+.matrixFrame {
+  /* Positioned so the absolutely positioned screen-reader labels in the cells are clipped with the table. */
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-md);
+}
+
+.matrix thead th {
+  background-color: var(--mo-color-surface-muted);
+  vertical-align: bottom;
+}
+
+.matrix tbody tr:last-child td,
+.matrix tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.groupRow th {
+  padding-top: 14px;
+  background-color: var(--mo-color-surface);
+}
+
+.allowed,
+.denied {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--mo-radius-xl);
+}
+
+.allowed {
+  background-color: var(--mo-color-success-1);
+  color: var(--mo-color-success-8);
+}
+
+.denied {
+  color: var(--mo-color-text-subtle);
+}
+
+/* System status cards */
+
+.statusCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  height: 100%;
+  padding: var(--mantine-spacing-lg);
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--mo-color-border);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.statusCard[data-state="warning"] {
+  border-color: var(--mo-color-warning-2);
+}
+
+.statusCard[data-state="danger"] {
+  border-color: var(--mo-color-danger-2);
+}
+
+.statusIcon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--tile-icon-bg);
+  color: var(--tile-icon);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px var(--mantine-spacing-md);
+  margin: 0;
+}
+
+.facts dt {
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mo-color-text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  color: var(--mo-color-text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.guidance {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface-muted);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.5;
+  color: var(--mo-color-text-secondary);
+}
+
+.guidance[data-state="warning"] {
+  background-color: var(--mo-color-warning-0);
+  color: var(--mo-color-text-strong);
+}
+
+.guidance[data-state="danger"] {
+  background-color: var(--mo-color-danger-0);
+  color: var(--mo-color-text-strong);
+}
+
+.guidance code {
+  font-family: var(--mo-font-monospace);
+  font-size: 0.95em;
+  padding: 1px 4px;
+  border-radius: var(--mo-radius-xs);
+  background-color: var(--mo-color-surface);
+  border: 1px solid var(--mo-color-border-subtle);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  padding: var(--mantine-spacing-md) var(--mantine-spacing-lg);
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--banner-border);
+  background-color: var(--banner-surface);
+}
+
+.pulse {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: var(--mo-radius-xl);
+  background-color: currentColor;
+  animation: mo-system-pulse 2.4s var(--mo-ease-in-out) infinite;
+}
+
+@keyframes mo-system-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}

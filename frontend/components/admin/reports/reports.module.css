@@ -1,0 +1,251 @@
+/*
+ * Report & expense pages. Colors, radii and motion come from --mo-* tokens
+ * only. Only transform / opacity are animated.
+ */
+
+/* ------------------------------------------------------------------------- */
+/* KPI rows squeezed 5–6 per row                                              */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * The kit KpiCard puts the icon beside the text. Five cards per row leave
+ * ~120px for the text at 1440px, so the padding tightens; six per row leave
+ * too little, so the icon moves above the text (values are never truncated).
+ * The queries read the SimpleGrid container (type="container").
+ */
+@container (min-width: 1100px) {
+  .kpiFive.kpiFive {
+    gap: 10px;
+    padding: 16px;
+  }
+}
+
+@container (min-width: 1040px) {
+  .kpiSix.kpiSix {
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+  }
+}
+
+/* Phones: two cards per row, icon above the text. */
+@container (max-width: 479px) {
+  .kpiPhone.kpiPhone {
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Tables inside section cards                                               */
+/* ------------------------------------------------------------------------- */
+
+.table th {
+  /* Contains visually hidden header text inside the scroll area (no page overflow). */
+  position: relative;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mo-color-text-secondary);
+  white-space: nowrap;
+}
+
+.table td {
+  font-size: 13px;
+  color: var(--mo-color-text);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.row[data-clickable] {
+  cursor: pointer;
+}
+
+.row[data-selected] td {
+  background-color: var(--mo-color-secondary-0);
+}
+
+.row[data-selected] td:first-child {
+  box-shadow: inset 3px 0 0 var(--mo-color-secondary-6);
+}
+
+.row[data-pending] {
+  opacity: 0.55;
+}
+
+.tbody {
+  transition: opacity var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.tbody[data-refreshing] {
+  opacity: 0.6;
+}
+
+.footer {
+  border-top: 1px solid var(--mo-color-border-subtle);
+}
+
+.mono {
+  font-family: var(--mo-font-monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mo-color-text-muted);
+  white-space: nowrap;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Product title that selects the row (keyboard path for row clicks). */
+.selectTitle {
+  display: block;
+  max-width: 100%;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--mo-color-text);
+  border-radius: var(--mo-radius-xs);
+}
+
+.selectTitle:hover {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Tabs (profit report)                                                       */
+/* ------------------------------------------------------------------------- */
+
+.tabsList {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.tab {
+  flex: 0 0 auto;
+  height: 36px;
+  padding-inline: 16px;
+  border-radius: var(--mo-radius-xl);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  color: var(--mo-color-text-secondary);
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background-color: var(--mo-color-surface-muted);
+}
+
+.tab[data-active] {
+  background-color: var(--mo-color-secondary-8);
+  color: var(--mo-color-text-on-dark);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Profitability detail panel                                                 */
+/* ------------------------------------------------------------------------- */
+
+.stat {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface-subtle);
+}
+
+.statValue {
+  font-family: var(--mo-font-heading);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--mo-color-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breakdown {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-sm);
+}
+
+.breakdownRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+  font-size: 13px;
+  color: var(--mo-color-text-secondary);
+}
+
+.breakdownRow > span:last-child {
+  color: var(--mo-color-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.breakdownTotal {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--mo-color-border-subtle);
+  font-weight: 600;
+  color: var(--mo-color-text);
+}
+
+.marginBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-secondary-8);
+  font-weight: 600;
+}
+
+.marginBox[data-tone="loss"] {
+  background-color: var(--mo-color-danger-0);
+  color: var(--mo-color-danger-8);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Action tiles that run an action (export) beside link tiles                */
+/* ------------------------------------------------------------------------- */
+
+.tileButton {
+  width: 100%;
+  cursor: pointer;
+}
+
+.tileButton:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tbody {
+    transition: none;
+  }
+}

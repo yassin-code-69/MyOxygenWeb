@@ -13,6 +13,10 @@
  *   prices); rows with a code are coupons, unique case-insensitively.
  * - Trigram search indexes and RLS live in the custom migration
  *   `0001_search_and_security.sql` (pg_trgm is installed in schema `extensions`).
+ *   Tables added later enable RLS in their own migration (e.g. `expenses`, 0005).
+ * - Profit: `order_items.unit_cost` snapshots `products.cost_price` at checkout;
+ *   `products.cost_breakdown` (optional) itemises the landed cost and always
+ *   sums to `cost_price` (enforced by product.service.ts).
  */
 import { relations, sql } from "drizzle-orm";
 import {
@@ -34,12 +38,25 @@ import {
 import type { ShippingAddress } from "../../types";
 import {
   discountTypeEnum,
+  expenseCategoryEnum,
   orderStatusEnum,
   paymentMethodEnum,
   paymentStatusEnum,
   stockHistoryReasonEnum,
   userRoleEnum,
 } from "./enums";
+
+/**
+ * Per-unit landed cost components of a product (BDT, 2 decimals, each >= 0).
+ * Their sum is the product's `cost_price`.
+ */
+export interface CostBreakdown {
+  supplierPrice: number;
+  shipping: number;
+  customsDuty: number;
+  packaging: number;
+  other: number;
+}
 
 const createdAt = () =>
   timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
@@ -70,6 +87,8 @@ export const users = pgTable(
   },
   (t) => [
     index("users_role_idx").on(t.role),
+    // Newest customers / sign-up counts per period (dashboard, customer report).
+    index("users_role_created_idx").on(t.role, t.createdAt),
     check("users_email_lowercase_chk", sql`${t.email} IS NULL OR ${t.email} = lower(${t.email})`),
   ],
 );
@@ -116,6 +135,8 @@ export const products = pgTable(
     description: text("description").notNull(),
     basePrice: money("base_price").notNull(),
     costPrice: money("cost_price").notNull(),
+    /** Optional itemisation of `cost_price` (NULL = not itemised). */
+    costBreakdown: jsonb("cost_breakdown").$type<CostBreakdown>(),
     images: text("images").array().default(sql`'{}'::text[]`).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     /**
@@ -290,6 +311,11 @@ export const orderItems = pgTable(
     quantity: integer("quantity").notNull(),
     unitPrice: money("unit_price").notNull(),
     totalPrice: money("total_price").notNull(),
+    /**
+     * Product cost price at the time of sale (COGS per unit). Rows that existed
+     * before migration 0005 were backfilled with the cost price of that moment.
+     */
+    unitCost: money("unit_cost").notNull(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -299,6 +325,7 @@ export const orderItems = pgTable(
     check("order_items_quantity_positive_chk", sql`${t.quantity} > 0`),
     check("order_items_unit_price_nonneg_chk", sql`${t.unitPrice} >= 0`),
     check("order_items_total_price_nonneg_chk", sql`${t.totalPrice} >= 0`),
+    check("order_items_unit_cost_nonneg_chk", sql`${t.unitCost} >= 0`),
   ],
 );
 
@@ -321,6 +348,8 @@ export const orderStatusHistory = pgTable(
   (t) => [
     index("order_status_history_order_created_idx").on(t.orderId, t.createdAt),
     index("order_status_history_changed_by_idx").on(t.changedBy),
+    // Activity feed: newest status changes across all orders.
+    index("order_status_history_created_at_idx").on(t.createdAt),
   ],
 );
 
@@ -403,6 +432,32 @@ export const invoices = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Operating expenses (profit report). Product cost is NOT recorded here: it
+// comes from order_items.unit_cost (COGS).
+// ---------------------------------------------------------------------------
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    category: expenseCategoryEnum("category").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    /** Business date the expense belongs to (Asia/Dhaka calendar). */
+    incurredOn: date("incurred_on").notNull(),
+    vendor: varchar("vendor", { length: 120 }),
+    note: text("note"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expenses_incurred_on_idx").on(t.incurredOn),
+    index("expenses_category_idx").on(t.category),
+    index("expenses_created_by_idx").on(t.createdBy),
+    check("expenses_amount_positive_chk", sql`${t.amount} > 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Relations
 // ---------------------------------------------------------------------------
 export const usersRelations = relations(users, ({ many }) => ({
@@ -410,6 +465,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   stockHistoryLogs: many(stockHistoryLogs),
   invoices: many(invoices),
   orderStatusChanges: many(orderStatusHistory),
+  expenses: many(expenses),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
@@ -525,6 +581,13 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   }),
   user: one(users, {
     fields: [invoices.userId],
+    references: [users.id],
+  }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  createdByUser: one(users, {
+    fields: [expenses.createdBy],
     references: [users.id],
   }),
 }));

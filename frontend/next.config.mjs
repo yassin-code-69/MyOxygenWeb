@@ -45,6 +45,8 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lets several local dev/QA servers run side by side (e.g. NEXT_DIST_DIR=.next-qa1).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,

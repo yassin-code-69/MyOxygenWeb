@@ -1,0 +1,77 @@
+/* Brand cards. Tokens only; only transform animates. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  height: 100%;
+  padding: var(--mantine-spacing-md);
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--mo-color-border);
+  background-color: var(--mo-color-surface);
+  box-shadow: var(--mo-shadow-xs);
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.monogram {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--tile-border);
+  background-color: var(--tile-surface);
+  color: var(--tile-icon);
+  font-family: var(--mo-font-heading);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  margin-top: auto;
+  padding-top: var(--mantine-spacing-sm);
+  border-top: 1px solid var(--mo-color-border-subtle);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mo-color-secondary-8);
+  text-decoration: none;
+  border-radius: var(--mo-radius-xs);
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link svg {
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.link:hover svg {
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .link svg {
+    transition: none;
+  }
+}

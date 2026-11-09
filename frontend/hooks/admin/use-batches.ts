@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { api } from "../../lib/api-client";
+import useSWR from "swr";
+import { api, type ApiError } from "../../lib/api-client";
 import { PERMISSIONS } from "../../types/auth";
 import type {
   AdminAdjustStockPayload,
@@ -12,7 +13,7 @@ import type {
   AdminImportBatchResult,
   BatchHealthStatus,
 } from "../../types/admin";
-import { useAdminPage, useAdminRevalidate } from "./swr";
+import { useAdminPage, useAdminRevalidate, type AdminKey } from "./swr";
 import { useCan } from "./use-permission";
 
 export interface BatchFilters {
@@ -39,6 +40,36 @@ export function useBatches(filters: BatchFilters) {
     },
     allowed,
   );
+}
+
+export interface AdminBatchKpis {
+  summary: AdminBatchListMeta["summary"];
+  total: number;
+  /** Batches that still hold stock. */
+  withStock: number;
+  /** Expired batches still holding (unsellable) stock — candidates for a write-off. */
+  expiredWithStock: number;
+}
+
+/** Store-wide batch health for the KPI strip (three `limit=1` reads; only `meta` is used). */
+export function useBatchKpis() {
+  const allowed = useCan(PERMISSIONS.BATCHES_MANAGE);
+  const key: AdminKey | null = allowed ? ["/admin/batches#kpis", {}] : null;
+  return useSWR<AdminBatchKpis, ApiError, AdminKey | null>(key, async () => {
+    const read = (params: Record<string, string | number | boolean>) =>
+      api.getPage<AdminBatchDTO, AdminBatchListMeta>("/admin/batches", { ...params, page: 1, limit: 1 });
+    const [all, withStock, expired] = await Promise.all([
+      read({}),
+      read({ inStockOnly: true }),
+      read({ status: "EXPIRED", inStockOnly: true }),
+    ]);
+    return {
+      summary: all.meta.summary,
+      total: all.meta.total,
+      withStock: withStock.meta.total,
+      expiredWithStock: expired.meta.total,
+    };
+  });
 }
 
 /** Stock writes: batch import (BATCHES_MANAGE) and adjustments (STOCK_ADJUST). */

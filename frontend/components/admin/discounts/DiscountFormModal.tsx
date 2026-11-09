@@ -18,7 +18,7 @@ import {
 import { DateTimePicker } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCalendarEvent, IconInfoCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconBolt, IconCalendarEvent, IconInfoCircle, IconTicket } from "@tabler/icons-react";
 import { zod4Resolver } from "mantine-form-zod-resolver";
 import { z } from "zod";
 import { useCategories } from "../../../hooks/admin/use-admin-products";
@@ -34,6 +34,7 @@ import type {
 } from "../../../types/admin";
 import { dhakaWallTimeToIso, dhakaWallTimeToMs, isoToDhakaWallTime, todayInDhaka } from "../format";
 import { applyApiFieldErrors } from "../form-errors";
+import { ModalTitle } from "../products/ModalTitle";
 import { ProductPicker, type ProductOption } from "../ProductPicker";
 
 const MAX_MONEY = 99_999_999.99;
@@ -303,7 +304,11 @@ export function DiscountFormModal({ opened, onClose, discount, preset = { kind: 
       onClose={onClose}
       size="xl"
       closeOnClickOutside={false}
-      title={<Text fw={700}>{discount ? `Edit ${discount.code ?? discount.name ?? "discount"}` : "New discount"}</Text>}
+      title={
+        <ModalTitle icon={(discount?.kind ?? preset.kind) === "COUPON" ? <IconTicket size={18} /> : <IconBolt size={18} />}>
+          {discount ? `Edit ${discount.code ?? discount.name ?? "discount"}` : "New discount"}
+        </ModalTitle>
+      }
     >
       {opened ? (
         <DiscountForm key={discount?.id ?? `new-${preset.kind}-${preset.product?.id ?? ""}`} discount={discount} preset={preset} onClose={onClose} />
@@ -560,10 +565,10 @@ function DiscountForm({ discount, preset, onClose }: { discount: AdminDiscountDT
         ) : null}
 
         <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={onClose} disabled={submitting}>
+          <Button radius="xl" variant="default" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" loading={submitting}>
+          <Button radius="xl" type="submit" loading={submitting}>
             {isEdit ? "Save changes" : "Create discount"}
           </Button>
         </Group>

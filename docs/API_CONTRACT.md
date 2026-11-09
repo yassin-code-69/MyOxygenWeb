@@ -282,3 +282,110 @@ Removed (now 404): `POST /admin/batches`, `GET /admin/inventory/logs`, `GET /adm
 ## Background jobs
 
 With `REDIS_URL` set, jobs run on BullMQ (worker inside the API process). Without it, an in-process queue with the same retry policy is used (development only: jobs are lost on restart). Jobs: `send-order-notification` (email + SMS per order event), `generate-invoice`, `inventory-digest` (08:00 `APP_TIMEZONE`, to `ADMIN_ALERT_EMAIL`), plus the nightly expiry scan at 02:00 `APP_TIMEZONE`. Missing provider keys log `skipped: not configured`; nothing is reported as sent unless it was.
+
+---
+
+## Admin v2 (dashboard, reports, management)
+
+Added for the admin redesign. Conventions above apply. Unless stated, `from`/`to` are inclusive `YYYY-MM-DD` business dates (Asia/Dhaka), max span 366 days; the **previous period** is the same number of days immediately before `from`. "Revenue" everywhere means what customers paid (order `total`, including delivery fees) for orders **not** CANCELLED or REFUNDED. Series use `granularity: "day"` when the range is ≤ 92 days, otherwise `"month"`.
+
+```ts
+type Kpi = { value: number; previous: number; changePercent: number | null }; // null when previous = 0
+type SeriesPoint = { period: string /* YYYY-MM-DD or YYYY-MM */; label: string /* "Sep 26" or "Sep 2026" */ };
+type ExpenseCategory = "SHIPPING" | "MARKETING" | "DELIVERY_SUBSIDY" | "PACKAGING" | "SALARIES" | "RENT" | "UTILITIES" | "OTHER";
+type CostBreakdown = { supplierPrice: number; shipping: number; customsDuty: number; packaging: number; other: number }; // landed cost = sum
+```
+
+### Dashboard & activity (ANALYTICS_READ)
+
+`GET /admin/analytics/summary?from&to` is **extended** (all existing fields stay). Default range: last 7 days ending today.
+
+```ts
+{
+  ...existingTelemetryFields, // totalRevenue, totalOrders, ordersByStatus, recentOrders, topProducts, dailyRevenue, lowStockCount, expiringSoonCount, ...
+  range: { from: string; to: string; timezone: string; previousFrom: string; previousTo: string; granularity: "day" | "month" };
+  kpis: {
+    revenue: Kpi; orders: Kpi;
+    customers: Kpi;      // total CUSTOMER accounts at `to` vs at previousTo
+    newCustomers: Kpi; productsSold: Kpi /* units */; avgOrderValue: Kpi;
+  };
+  revenueSeries: Array<SeriesPoint & { revenue: number; orders: number }>; // every bucket present, zeros included
+  ordersByStatus: Record<OrderStatus, number>; // within range
+  recentOrders: Array<{ id; orderNumber; customerName; customerPhone; status; paymentMethod; total; itemCount; createdAt; firstItemImage: string | null }>; // latest 5 overall
+  topProducts: Array<{ productId; title; slug; sku; image: string | null; categoryName: string | null; unitsSold; revenue }>; // top 5 in range
+  salesByCategory: Array<{ categoryId; name; slug; revenue; unitsSold; sharePercent }>; // in range, desc
+  latestCustomers: Array<{ id; fullName; email: string | null; phone; createdAt }>; // 5 newest CUSTOMER accounts
+  lowStockProducts: Array<{ productId; title; slug; image: string | null; totalStock; lowStockThreshold }>; // 5 lowest
+}
+```
+
+`GET /admin/analytics/activity?limit=10` (1–50) returns `Array<{ id: string; type: "ORDER_PLACED" | "ORDER_STATUS_CHANGED" | "PAYMENT_RECEIVED" | "CUSTOMER_REGISTERED" | "STOCK_IMPORTED" | "STOCK_SCRAPPED" | "DISCOUNT_CREATED"; title: string; description: string | null; at: string; href: string | null /* admin route */ }>`, newest first, built only from real rows (orders, order_status_history, users, stock_history_logs, discounts).
+
+### Reports
+
+- `GET /admin/reports/products?from&to&q&categoryId&sort&page&limit` (ANALYTICS_READ): `Array<{ productId; title; sku; slug; image; category: { id; name } | null; unitsSold; revenue; ordersCount; avgSellingPrice; currentStock; lastSoldAt: string | null; isActive }>`. `sort` = `revenue_desc` (default) | `units_desc` | `title_asc` | `stock_asc`. `meta` = pagination + `totals: { unitsSold; revenue }`.
+- `GET /admin/reports/customers?from&to&page&limit` (ANALYTICS_READ): `{ kpis: { totalCustomers: Kpi; newCustomers: Kpi; returningCustomers: Kpi /* ≥2 orders in range */; repeatRatePercent: number; avgOrderValue: Kpi }; signupSeries: Array<SeriesPoint & { count }>; byDistrict: Array<{ district; orders; revenue }> /* top 10 */; topCustomers: Array<{ id; fullName; phone; email; orders; totalSpent; lastOrderAt }> }`. `meta` paginates `topCustomers`.
+- `GET /admin/reports/inventory` (ANALYTICS_READ): `{ totals: { productCount; activeCount; stockUnits; stockValueCost; stockValueRetail }; byCategory: Array<{ categoryId; name; stockUnits; valueCost; valueRetail }>; lowStock: Array<{ productId; title; image; totalStock; lowStockThreshold; listingStatus }>; expiringSoon: BatchDTO[] /* ≤30 days, with stock */; deadStock: Array<{ productId; title; image; totalStock; lastSoldAt: string | null; daysSinceLastSale: number | null }> /* stock > 0, no sale in 60 days */ }`.
+- `GET /admin/reports/profit?from&to` (**SUPER_ADMIN**): `{ range; kpis: { revenue: Kpi; cogs: Kpi; grossProfit: Kpi; grossMarginPercent: Kpi; expenses: Kpi; netProfit: Kpi; netMarginPercent: Kpi }; trend: Array<SeriesPoint & { revenue; cost; profit; marginPercent }>; byCategory: Array<{ categoryId; name; revenue; cost; profit; marginPercent }>; topProfitable: Array<{ productId; title; image; profit; marginPercent }> /* 5 */; expenseBreakdown: Array<{ key: "PRODUCT_COST" | ExpenseCategory; label; amount; percent }> }`. COGS = Σ `order_items.unit_cost × quantity`; gross profit = revenue − COGS; net profit = gross profit − expenses in range.
+- `GET /admin/reports/profit/products?from&to&q&categoryId&sort&page&limit` (**SUPER_ADMIN**): `Array<{ productId; title; sku; image; category: { id; name } | null; sellingPrice /* avg realised unit price, or current effective price when unsold */; avgCost /* avg unit_cost, or current costPrice when unsold */; profitPerUnit; marginPercent; unitsSold; revenue; cogs; profit; isActive }>`. `sort` = `margin_desc` (default) | `margin_asc` | `profit_desc` | `revenue_desc`.
+- `GET /admin/reports/profit/products/:id?from&to` (**SUPER_ADMIN**): `{ product: { id; title; sku; image; category; isActive }; range; unitsSold; revenue; cogs; grossProfit; marginPercent; costBreakdown: (CostBreakdown & { landedCost }) | null; pricing: { basePrice; avgDiscountPerUnit; netSellingPrice; profitPerUnit; marginPercent } }`.
+
+### Expenses (SUPER_ADMIN)
+
+`ExpenseDTO = { id; category: ExpenseCategory; amount; incurredOn: "YYYY-MM-DD"; vendor: string | null; note: string | null; createdBy: { id; fullName } | null; createdAt; updatedAt }`
+
+- `GET /admin/expenses?from&to&category&page&limit` returns `ExpenseDTO[]`, `meta` + `totalAmount` + `byCategory: Array<{ category; count; amount }>` (totals per category for the date range, ignoring the category filter, largest first, non-zero only).
+- `POST /admin/expenses` `{ category, amount > 0, incurredOn ≤ today, vendor?: ≤120, note?: ≤500 }` returns 201 `ExpenseDTO`.
+- `PATCH /admin/expenses/:id` (any subset) returns `ExpenseDTO`. `DELETE /admin/expenses/:id` returns 204.
+
+### Products: cost breakdown
+
+`AdminProductDTO` gains `costBreakdown: CostBreakdown | null`. `POST/PATCH /admin/catalog/products` accept `costBreakdown` (each ≥ 0); when present the server sets `costPrice` to its sum (sending a different `costPrice` alongside is a 422). `order_items.unit_cost` snapshots the product's `costPrice` at checkout (existing rows were backfilled with the cost price current at migration time).
+
+### Payments and search
+
+- `GET /admin/payments/summary?from&to` (ORDERS_READ): `{ collected /* PAID */; pendingCod /* COD, UNPAID, not cancelled/refunded */; refunded; failed; byMethod: Array<{ method: PaymentMethod; orders; amount }>; byStatus: Array<{ status: PaymentStatus; orders; amount }> }`.
+- `GET /admin/orders` gains filters `paymentStatus` and `paymentMethod` (or `ALL`), `courier` (provider, case-insensitive; `unknown` = no courier recorded) and `dateField` = `createdAt` (default) | `shippedAt` | `deliveredAt`, which selects the timestamp the `from`/`to` range filters on.
+- `GET /admin/search?q=` (any staff role; `q` ≥ 2 chars): `{ products: Array<{ id; title; sku; image; href }>; orders: Array<{ id; orderNumber; customerName; total; status; href }>; customers: Array<{ id; fullName; phone; email; href }> }`, ≤5 each. Groups the caller lacks permission for are empty (products: PRODUCTS_READ; orders and customers: ORDERS_READ). `href` is an admin route.
+
+### Management
+
+- `GET /admin/customers?q&sort&page&limit` (ORDERS_READ): `sort` = `newest` (default) | `spend_desc` | `orders_desc`. `Array<{ id; fullName; phone; email; isActive; createdAt; ordersCount; totalSpent; lastOrderAt: string | null }>` + `meta`.
+- `GET /admin/customers/:id` (ORDERS_READ): `{ customer: { id; fullName; phone; email; isActive; createdAt }; stats: { ordersCount; totalSpent; avgOrderValue; firstOrderAt; lastOrderAt }; recentOrders: OrderSummaryDTO[] /* 10 */; addresses: ShippingAddress[] /* distinct, ≤5 */ }`.
+- `PATCH /admin/customers/:id` (STAFF_MANAGE): `{ isActive }`, CUSTOMER accounts only; returns the customer object.
+- `GET /admin/catalog/categories` (PRODUCTS_READ): `Array<{ id; name; slug; iconUrl; parentId; sortOrder; isActive; productCount; activeProductCount; createdAt; updatedAt }>`, inactive included.
+- `POST /admin/catalog/categories` (PRODUCTS_WRITE): `{ name 2–255, slug? (kebab, auto from name), iconUrl?: URL or /icons/... path, parentId?, sortOrder?, isActive? }` returns 201; 409 on duplicate slug.
+- `PATCH /admin/catalog/categories/:id` (PRODUCTS_WRITE): any subset; slug is immutable.
+- `DELETE /admin/catalog/categories/:id` (PRODUCTS_WRITE): deactivates; 409 while it has active products.
+- `GET /admin/catalog/brands` (PRODUCTS_READ): `Array<{ name; productCount; activeProductCount; unitsSold30d }>`.
+- `PATCH /admin/catalog/brands` (PRODUCTS_WRITE): `{ from, to }` renames the brand on every product; returns `{ updated: number }`.
+- `GET /admin/staff` (STAFF_MANAGE): `Array<{ id; fullName; email; phone; role; isActive; createdAt }>` for non-CUSTOMER users.
+- `POST /admin/staff` (STAFF_MANAGE): `{ fullName, email, phone (BD mobile), role (staff role), password ≥ 12 }` returns 201.
+- `PATCH /admin/staff/:id` (STAFF_MANAGE): `{ fullName?, role?, isActive? }`; 409 when it would demote or deactivate yourself, or remove the last active SUPER_ADMIN.
+- `GET /admin/roles` (STAFF_MANAGE): `Array<{ role; permissions: Permission[]; userCount }>`.
+- `GET /admin/system/status` (STAFF_MANAGE): `{ api: { status: "UP"; uptimeSeconds; nodeEnv; timezone; version }; database: { status: "CONNECTED" | "DISCONNECTED"; latencyMs: number | null; migrationsApplied }; jobs: { queue: "bullmq" | "in-process"; redisConfigured }; integrations: { courier: { provider; configured }; sms: { configured }; email: { configured } }; cache: { entries } }`. Never secrets.
+- `GET /admin/delivery/summary?from&to` (ORDERS_READ): `{ readyToShip /* PROCESSING */; inTransit /* SHIPPED */; deliveredInRange; cancelledAfterShipping; avgDeliveryHours: number | null /* shipped→delivered, in range */; byCourier: Array<{ provider; inTransit; delivered }> }`.
+
+### Admin v2 implementation notes
+
+Behaviour the tables above leave open, as implemented:
+
+- **Default ranges.** The dashboard summary defaults to the last 7 days; reports, payments and the delivery summary default to the last 30. If only one of `from`/`to` is sent, the other is derived. Spans over 366 days are a 422.
+- **Order counts.** `kpis.orders` and `revenueSeries.orders` count every order placed in the range, in any status. The legacy `dailyRevenue` now follows the resolved range and its `orderCount` counts revenue orders only.
+- **Product and category revenue** = line total minus that line's proportional share of the order's coupon discount. Delivery fees are not attributed to products, so category totals = revenue − delivery fees.
+- **Margins.** `grossMarginPercent` and `netMarginPercent` are profit ÷ revenue × 100 (0 when revenue is 0); their `changePercent` is the relative change of the percentage, not percentage points.
+- **Profit product detail.** `netSellingPrice` is the average realised unit price, `avgDiscountPerUnit` = basePrice − netSellingPrice, and `profitPerUnit` uses the product's current landed cost. The list's `avgCost` uses the historical `unit_cost` snapshots.
+- **expenseBreakdown** lists PRODUCT_COST plus every non-zero expense category, sorted by amount; `percent` is of COGS + expenses.
+- **Payments.** Both breakdowns list every enum value (zeros included). `byMethod` excludes CANCELLED orders; `byStatus` excludes only cancelled orders that are still UNPAID, so its PAID / REFUNDED / FAILED rows equal `collected` / `refunded` / `failed`.
+- **Inventory report.** Retail value uses `basePrice`; each list is capped at 100 rows; deadStock includes products never sold. The products report's `lastSoldAt` is all-time.
+- **Customers report** counts CUSTOMER accounts only; returning = 2+ revenue orders in the range.
+- **Activity.** ORDER_STATUS_CHANGED skips the initial placed row; PAYMENT_RECEIVED is the DELIVERED event of a paid COD order. Links: discounts `/admin/discounts?discountId=`, stock events `/admin/products?productId=`.
+- **costBreakdown.** On create, `costPrice` may be omitted when a breakdown is sent; omitted components count as 0; unknown keys are a 422. PATCHing `costPrice` alone on a product that has a breakdown is a 422 unless it equals the sum.
+- **Search** returns 403 for customers; `q` is 2–100 characters; phones match in any accepted format.
+- **System status.** `database.migrationsApplied` is `null` when DISCONNECTED and `0` when the migrations table is missing; the response is `Cache-Control: no-store`.
+- **Categories.** DELETE returns 200 with the category (409 if already inactive). Deactivating (DELETE or `PATCH isActive:false`) is a 409 while the category has ACTIVE or AWAITING_STOCK products (`details.listedProductCount`). Resending the current slug is accepted; changing it is a 422; a name without latin letters needs an explicit slug. Unknown parent, self-parenting or a cycle is a 422 on `parentId`.
+- **Brands** are listed by exact spelling (so "Nivea" and "nivea" can be merged by a rename); a case-only rename is allowed.
+- **Delivery summary.** `byCourier.inTransit` is live (current SHIPPED) and `delivered` is in range; orders without a courier are grouped as `"unknown"`.
+- **Roles** returns all 6 roles (CUSTOMER with no permissions); `userCount` includes inactive accounts.
+- **Staff.** Email is required; passwords are 12–72 bytes; duplicates are 409 with `details.field` = `email` | `phone`; PATCH conflicts are 409 with `details.reason` = `SELF_ROLE_CHANGE` | `SELF_DEACTIVATION` | `LAST_SUPER_ADMIN`.
+- **Customers.** `GET /admin/customers/:id` is 404 for staff ids; `avgOrderValue` = spend ÷ non-cancelled, non-refunded orders; addresses are de-duplicated ignoring case and whitespace, most recent first; search also matches partial phone digits.

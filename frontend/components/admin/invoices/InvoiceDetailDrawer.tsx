@@ -67,18 +67,19 @@ export function InvoiceDetailDrawer({
             <Title order={2} fz={22} ff="var(--mo-font-monospace)">
               {invoice.invoiceNumber}
             </Title>
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="var(--mo-color-text-muted)">
               Issued {formatDhakaDateTime(invoice.createdAt)} · {paymentMethodLabel(invoice.paymentMethod)}
             </Text>
           </Box>
 
           <Group gap="xs">
-            <Button size="xs" leftSection={<IconFileTypePdf size={14} aria-hidden />} loading={openingPdf} onClick={() => onOpenPdf(invoice)}>
+            <Button size="xs" radius="xl" color="primaryPink" leftSection={<IconFileTypePdf size={14} aria-hidden />} loading={openingPdf} onClick={() => onOpenPdf(invoice)}>
               Open PDF
             </Button>
             {onRegenerate ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="default"
                 leftSection={<IconRefresh size={14} aria-hidden />}
                 loading={regenerating}
@@ -89,7 +90,7 @@ export function InvoiceDetailDrawer({
             ) : null}
           </Group>
           {!invoice.hasPdf ? (
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="var(--mo-color-text-muted)">
               The PDF hasn&apos;t been generated yet.{" "}
               {onRegenerate ? "Opening it generates it now." : "Someone with invoice permission needs to generate it first."}
             </Text>
@@ -97,7 +98,7 @@ export function InvoiceDetailDrawer({
 
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
             <Paper withBorder radius="md" p="md">
-              <Text size="xs" c="dimmed" fw={700} tt="uppercase" mb={6}>
+              <Text size="xs" c="var(--mo-color-text-muted)" fw={700} tt="uppercase" mb={6}>
                 Billed to
               </Text>
               <Text size="sm" fw={600}>
@@ -109,31 +110,31 @@ export function InvoiceDetailDrawer({
               </Text>
             </Paper>
             <Paper withBorder radius="md" p="md">
-              <Text size="xs" c="dimmed" fw={700} tt="uppercase" mb={6}>
+              <Text size="xs" c="var(--mo-color-text-muted)" fw={700} tt="uppercase" mb={6}>
                 Order
               </Text>
               {invoice.order ? (
                 <>
                   <Anchor
                     component={Link}
-                    href={`/admin/orders?q=${encodeURIComponent(invoice.order.orderNumber)}`}
+                    href={`/admin/orders?orderId=${encodeURIComponent(invoice.order.id)}`}
                     size="sm"
                     fw={600}
                     ff="var(--mo-font-monospace)"
                   >
                     {invoice.order.orderNumber}
                   </Anchor>
-                  <Text size="xs" c="dimmed">
+                  <Text size="xs" c="var(--mo-color-text-muted)">
                     Placed {formatDhakaDateTime(invoice.order.createdAt)}
                   </Text>
                   {invoice.order.trackingId ? (
-                    <Text size="xs" c="dimmed">
+                    <Text size="xs" c="var(--mo-color-text-muted)">
                       {courierName(invoice.order.courierProvider)} · {invoice.order.trackingId}
                     </Text>
                   ) : null}
                 </>
               ) : (
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="var(--mo-color-text-muted)">
                   {invoice.orderNumber ?? "The order is no longer available."}
                 </Text>
               )}
@@ -144,62 +145,64 @@ export function InvoiceDetailDrawer({
             <Text fw={600} mb="xs">
               Items ({formatCount(invoice.itemCount)})
             </Text>
-            <Table.ScrollContainer minWidth={560} type="native">
-              <Table verticalSpacing="xs" aria-label={`Items on ${invoice.invoiceNumber}`}>
-                <Table.Thead bg="var(--mo-color-surface-muted)">
-                  <Table.Tr>
-                    <Table.Th scope="col">Product</Table.Th>
-                    <Table.Th scope="col">Batch</Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Qty
-                    </Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Price
-                    </Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Total
-                    </Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {invoice.items.map((item) => (
-                    <Table.Tr key={item.orderItemId}>
-                      <Table.Td>
-                        <Text size="sm" fw={500} lineClamp={2}>
-                          {item.title}
-                        </Text>
-                        {item.sku ? (
-                          <Text size="xs" c="dimmed" ff="var(--mo-font-monospace)">
-                            {item.sku}
-                          </Text>
-                        ) : null}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" ff="var(--mo-font-monospace)">
-                          {item.batchNumber ?? "—"}
-                        </Text>
-                        {item.expiryDate ? (
-                          <Text size="xs" c="dimmed">
-                            Exp. {formatCalendarDate(item.expiryDate)}
-                          </Text>
-                        ) : null}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        {formatCount(item.quantity)}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        {formatMoney(item.unitPrice)}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        <Text size="sm" fw={600}>
-                          {formatMoney(item.totalPrice)}
-                        </Text>
-                      </Table.Td>
+            <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
+              <Table.ScrollContainer minWidth={560} type="native">
+                <Table verticalSpacing="xs" horizontalSpacing="md" aria-label={`Items on ${invoice.invoiceNumber}`}>
+                  <Table.Thead bg="var(--mo-color-surface-muted)">
+                    <Table.Tr>
+                      <Table.Th scope="col">Product</Table.Th>
+                      <Table.Th scope="col">Batch</Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Qty
+                      </Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Price
+                      </Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Total
+                      </Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {invoice.items.map((item) => (
+                      <Table.Tr key={item.orderItemId}>
+                        <Table.Td>
+                          <Text size="sm" fw={500} lineClamp={2}>
+                            {item.title}
+                          </Text>
+                          {item.sku ? (
+                            <Text size="xs" c="var(--mo-color-text-muted)" ff="var(--mo-font-monospace)">
+                              {item.sku}
+                            </Text>
+                          ) : null}
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" ff="var(--mo-font-monospace)">
+                            {item.batchNumber ?? "—"}
+                          </Text>
+                          {item.expiryDate ? (
+                            <Text size="xs" c="var(--mo-color-text-muted)">
+                              Exp. {formatCalendarDate(item.expiryDate)}
+                            </Text>
+                          ) : null}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          {formatCount(item.quantity)}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          {formatMoney(item.unitPrice)}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          <Text size="sm" fw={600}>
+                            {formatMoney(item.totalPrice)}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Paper>
             <Stack gap={4} mt="sm" ml="auto" maw={320}>
               <Row label="Subtotal" value={formatMoney(invoice.subtotal)} />
               {invoice.discountAmount > 0 ? <Row label="Discount" value={`−${formatMoney(invoice.discountAmount)}`} /> : null}

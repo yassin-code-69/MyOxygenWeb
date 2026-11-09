@@ -10,15 +10,20 @@
  *   `auto_deactivated_at`, so restocking never re-activates it.
  * - Products are never hard-deleted (order history and the ledger keep them).
  * - slug and sku are immutable after creation.
+ * - Cost breakdown (optional itemised landed cost): when set, cost_price is
+ *   ALWAYS the sum of its components. Sending a breakdown derives cost_price;
+ *   a conflicting costPrice is a 422; changing costPrice alone while a
+ *   breakdown exists is a 422 (update or clear the breakdown instead);
+ *   `costBreakdown: null` clears it and keeps cost_price as sent / unchanged.
  */
-import { eq, like, or } from "drizzle-orm";
+import { eq, inArray, like, or } from "drizzle-orm";
 import { db as defaultDb, type DatabaseTransaction } from "../db/client";
-import { categories, products } from "../db/schema/tables";
+import { categories, products, type CostBreakdown } from "../db/schema/tables";
 import { isUniqueViolation } from "../lib/db-errors";
 import { AppError } from "../lib/errors";
 import { invalidateCatalogCache } from "../middleware/cache";
 import { batchInspectorService, type BatchDTO } from "./batch-inspector.service";
-import { catalogService, type AdminProductDTO } from "./catalog.service";
+import { catalogService, type AdminProductDTO, type AdminProductListQuery } from "./catalog.service";
 import { type DbExecutor, isTransaction, queryAll, runInTransaction } from "./db-executor";
 import { syncProductAvailability } from "./inventory.service";
 import { escapeLikePattern, fieldValidationError } from "./service-utils";
@@ -32,7 +37,9 @@ export interface CreateProductInput {
   brand?: string | null;
   description: string;
   basePrice: number;
+  /** Must equal the breakdown total when `costBreakdown` is set. */
   costPrice: number;
+  costBreakdown?: CostBreakdown | null;
   images: string[];
   requiresBatchTracking: boolean;
   lowStockThreshold: number;
@@ -50,15 +57,65 @@ export interface UpdateProductInput {
   description?: string;
   basePrice?: number;
   costPrice?: number;
+  /** Object: replace (cost_price := its sum). null: clear. undefined: unchanged. */
+  costBreakdown?: CostBreakdown | null;
   images?: string[];
   requiresBatchTracking?: boolean;
   lowStockThreshold?: number;
   isActive?: boolean;
 }
 
-export interface AdminProductDetailDTO extends AdminProductDTO {
+/** AdminProductDTO as served by the admin product endpoints (adds the cost breakdown). */
+export interface AdminProductWithCostDTO extends AdminProductDTO {
+  costBreakdown: CostBreakdown | null;
+}
+
+export interface AdminProductDetailDTO extends AdminProductWithCostDTO {
   /** Every batch (including depleted / expired ones) in FEFO order. */
   batches: BatchDTO[];
+}
+
+const COST_COMPONENTS = ["supplierPrice", "shipping", "customsDuty", "packaging", "other"] as const;
+
+const toPaisa = (value: number): number => Math.round(value * 100);
+
+/** Landed cost (sum of the components), summed in integer paisa. */
+export function costBreakdownTotal(breakdown: CostBreakdown): number {
+  return COST_COMPONENTS.reduce((sum, key) => sum + toPaisa(breakdown[key]), 0) / 100;
+}
+
+/** Normalises a stored / submitted breakdown to five 2-decimal numbers (missing components are 0). */
+export function normalizeCostBreakdown(
+  raw: Partial<Record<keyof CostBreakdown, unknown>> | null | undefined,
+): CostBreakdown | null {
+  if (raw === null || raw === undefined) return null;
+  const read = (key: keyof CostBreakdown): number => {
+    const value = Number(raw[key] ?? 0);
+    return Number.isFinite(value) ? toPaisa(value) / 100 : 0;
+  };
+  return {
+    supplierPrice: read("supplierPrice"),
+    shipping: read("shipping"),
+    customsDuty: read("customsDuty"),
+    packaging: read("packaging"),
+    other: read("other"),
+  };
+}
+
+function costPriceError(message: string): AppError {
+  return fieldValidationError({ costPrice: [message] });
+}
+
+/**
+ * Cost price for a write that carries a breakdown: the sum of the components.
+ * A different explicit costPrice is rejected (422 on `costPrice`).
+ */
+function costPriceFromBreakdown(breakdown: CostBreakdown, costPrice: number | undefined): number {
+  const total = costBreakdownTotal(breakdown);
+  if (costPrice !== undefined && toPaisa(costPrice) !== toPaisa(total)) {
+    throw costPriceError(`costPrice must equal the sum of costBreakdown (${total.toFixed(2)}); omit costPrice to derive it`);
+  }
+  return total;
 }
 
 const MAX_SLUG_LENGTH = 200;
@@ -131,6 +188,7 @@ async function lockProduct(tx: DatabaseTransaction, id: string) {
       autoDeactivatedAt: products.autoDeactivatedAt,
       basePrice: products.basePrice,
       costPrice: products.costPrice,
+      costBreakdown: products.costBreakdown,
     })
     .from(products)
     .where(eq(products.id, id))
@@ -140,17 +198,50 @@ async function lockProduct(tx: DatabaseTransaction, id: string) {
 }
 
 export class ProductService {
+  /** GET /admin/catalog/products: the catalog admin list plus each product's cost breakdown. */
+  async listAdminProducts(
+    query: AdminProductListQuery,
+    db: DbExecutor = defaultDb,
+  ): Promise<{ items: AdminProductWithCostDTO[]; total: number }> {
+    const { items, total } = await catalogService.listAdminProducts(query, db);
+    return { items: await this.withCostBreakdowns(items, db), total };
+  }
+
+  async getAdminProduct(id: string, db: DbExecutor = defaultDb): Promise<AdminProductWithCostDTO> {
+    const [product] = await this.withCostBreakdowns([await catalogService.getAdminProduct(id, db)], db);
+    if (!product) throw AppError.notFound("Product", { id });
+    return product;
+  }
+
   async getProduct(id: string, db: DbExecutor = defaultDb): Promise<AdminProductDetailDTO> {
     const [product, batches] = await queryAll(
       db,
-      () => catalogService.getAdminProduct(id, db),
+      () => this.getAdminProduct(id, db),
       () => batchInspectorService.listProductBatches(id, db),
     );
     return { ...product, batches };
   }
 
-  async createProduct(input: CreateProductInput, db: DbExecutor = defaultDb): Promise<AdminProductDTO> {
+  /** Attaches `costBreakdown` to admin product DTOs (one primary-key lookup for the whole page). */
+  private async withCostBreakdowns(items: AdminProductDTO[], db: DbExecutor): Promise<AdminProductWithCostDTO[]> {
+    if (items.length === 0) return [];
+    const rows = await db
+      .select({ id: products.id, costBreakdown: products.costBreakdown })
+      .from(products)
+      .where(
+        inArray(
+          products.id,
+          items.map((item) => item.id),
+        ),
+      );
+    const byId = new Map(rows.map((row) => [row.id, normalizeCostBreakdown(row.costBreakdown)]));
+    return items.map((item) => ({ ...item, costBreakdown: byId.get(item.id) ?? null }));
+  }
+
+  async createProduct(input: CreateProductInput, db: DbExecutor = defaultDb): Promise<AdminProductWithCostDTO> {
     const ownsTransaction = !isTransaction(db);
+    const costBreakdown = normalizeCostBreakdown(input.costBreakdown);
+    const costPrice = costBreakdown === null ? input.costPrice : costPriceFromBreakdown(costBreakdown, input.costPrice);
     let productId: string;
     try {
       productId = await runInTransaction(db, async (tx) => {
@@ -184,7 +275,8 @@ export class ProductService {
             brand: input.brand ?? null,
             description: input.description,
             basePrice: money(input.basePrice),
-            costPrice: money(input.costPrice),
+            costPrice: money(costPrice),
+            costBreakdown,
             images: input.images,
             requiresBatchTracking: input.requiresBatchTracking,
             lowStockThreshold: input.lowStockThreshold,
@@ -204,12 +296,12 @@ export class ProductService {
       mapUniqueViolation(error, input.slug, input.sku);
     }
 
-    warnIfCostAboveBase(productId, input.basePrice, input.costPrice);
+    warnIfCostAboveBase(productId, input.basePrice, costPrice);
     if (ownsTransaction) invalidateCatalogCache();
-    return catalogService.getAdminProduct(productId, db);
+    return this.getAdminProduct(productId, db);
   }
 
-  async updateProduct(id: string, input: UpdateProductInput, db: DbExecutor = defaultDb): Promise<AdminProductDTO> {
+  async updateProduct(id: string, input: UpdateProductInput, db: DbExecutor = defaultDb): Promise<AdminProductWithCostDTO> {
     const ownsTransaction = !isTransaction(db);
 
     const prices = await runInTransaction(db, async (tx): Promise<{ basePrice: number; costPrice: number } | null> => {
@@ -232,7 +324,24 @@ export class ProductService {
       if (input.brand !== undefined) changes.brand = input.brand;
       if (input.description !== undefined) changes.description = input.description;
       if (input.basePrice !== undefined) changes.basePrice = money(input.basePrice);
-      if (input.costPrice !== undefined) changes.costPrice = money(input.costPrice);
+      let costPrice = input.costPrice;
+      const breakdown = normalizeCostBreakdown(input.costBreakdown);
+      if (breakdown !== null) {
+        costPrice = costPriceFromBreakdown(breakdown, input.costPrice);
+        changes.costBreakdown = breakdown;
+      } else if (input.costBreakdown === null) {
+        changes.costBreakdown = null;
+      } else if (input.costPrice !== undefined) {
+        // Keep the invariant cost_price = SUM(breakdown) for products that have one.
+        const existing = normalizeCostBreakdown(current.costBreakdown);
+        if (existing !== null && toPaisa(input.costPrice) !== toPaisa(costBreakdownTotal(existing))) {
+          throw costPriceError(
+            `This product has a cost breakdown totalling ${costBreakdownTotal(existing).toFixed(2)}; ` +
+              "send costBreakdown (or costBreakdown: null) to change costPrice",
+          );
+        }
+      }
+      if (costPrice !== undefined) changes.costPrice = money(costPrice);
       if (input.images !== undefined) changes.images = input.images;
       if (input.requiresBatchTracking !== undefined) changes.requiresBatchTracking = input.requiresBatchTracking;
       if (input.lowStockThreshold !== undefined) changes.lowStockThreshold = input.lowStockThreshold;
@@ -249,10 +358,10 @@ export class ProductService {
         await syncProductAvailability(tx, [id]);
       }
 
-      return input.basePrice !== undefined || input.costPrice !== undefined
+      return input.basePrice !== undefined || costPrice !== undefined
         ? {
             basePrice: input.basePrice ?? Number(current.basePrice),
-            costPrice: input.costPrice ?? Number(current.costPrice),
+            costPrice: costPrice ?? Number(current.costPrice),
           }
         : null;
     });
@@ -261,7 +370,7 @@ export class ProductService {
       warnIfCostAboveBase(id, prices.basePrice, prices.costPrice);
     }
     if (ownsTransaction) invalidateCatalogCache();
-    return catalogService.getAdminProduct(id, db);
+    return this.getAdminProduct(id, db);
   }
 
   /**
@@ -269,7 +378,7 @@ export class ProductService {
    * manually inactive; an auto-hidden product is converted to a manual
    * deactivation so a restock will not bring it back.
    */
-  async deactivateProduct(id: string, db: DbExecutor = defaultDb): Promise<AdminProductDTO> {
+  async deactivateProduct(id: string, db: DbExecutor = defaultDb): Promise<AdminProductWithCostDTO> {
     const ownsTransaction = !isTransaction(db);
     await runInTransaction(db, async (tx) => {
       const current = await lockProduct(tx, id);
@@ -279,7 +388,7 @@ export class ProductService {
       await tx.update(products).set({ isActive: false, autoDeactivatedAt: null }).where(eq(products.id, id));
     });
     if (ownsTransaction) invalidateCatalogCache();
-    return catalogService.getAdminProduct(id, db);
+    return this.getAdminProduct(id, db);
   }
 }
 

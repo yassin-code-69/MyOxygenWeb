@@ -13,11 +13,13 @@
   },
   "dependencies": {
     "@mantine/carousel": "9.6.1",
+    "@mantine/charts": "9.6.1",
     "@mantine/core": "9.6.1",
     "@mantine/dates": "9.6.1",
     "@mantine/form": "9.6.1",
     "@mantine/hooks": "9.6.1",
     "@mantine/notifications": "^9.6.2",
+    "@mantine/spotlight": "9.6.1",
     "@tabler/icons-react": "^3.30.0",
     "dayjs": "^1.11.23",
     "embla-carousel": "^8.6.0",
@@ -27,6 +29,7 @@
     "next": "16.2.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "recharts": "3.10.1",
     "swr": "^2.5.1",
     "zod": "^4.6.7",
     "zustand": "^5.0.15"

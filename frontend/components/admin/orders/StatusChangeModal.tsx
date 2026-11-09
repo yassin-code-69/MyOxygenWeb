@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Alert, Button, Checkbox, Group, Modal, SimpleGrid, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconAlertTriangle, IconArrowsExchange, IconInfoCircle } from "@tabler/icons-react";
 import type { KeyedMutator } from "swr";
 import { StatusBadge } from "../../StatusBadge";
 import { useOrderMutations, type AdminOrdersPage } from "../../../hooks/admin/use-admin-orders";
@@ -12,6 +12,7 @@ import { getErrorMessage, isApiError } from "../../../lib/api-client";
 import type { OrderStatus } from "../../../types/order";
 import type { AdminCourierCancellation, AdminOrderDetailDTO, AdminOrderStatusPayload } from "../../../types/admin";
 import { humanizeEnum } from "../format";
+import { ModalTitle } from "../products/ModalTitle";
 import { courierName, readCourierCancellation, TRANSITION_LABELS, type OrderRef } from "./order-utils";
 
 export interface StatusChangeRequest {
@@ -35,7 +36,13 @@ export function StatusChangeModal({ request, onClose, onChanged, list }: StatusC
       onClose={onClose}
       centered
       size="lg"
-      title={<Text fw={700}>{request ? `${TRANSITION_LABELS[request.target]} · ${request.order.orderNumber}` : ""}</Text>}
+      title={
+        request ? (
+          <ModalTitle icon={<IconArrowsExchange size={18} />} tone={request.target === "CANCELLED" || request.target === "REFUNDED" ? "danger" : "default"}>
+            {`${TRANSITION_LABELS[request.target]} · ${request.order.orderNumber}`}
+          </ModalTitle>
+        ) : null
+      }
     >
       {request ? (
         <StatusChangeForm key={`${request.order.id}-${request.target}`} request={request} onClose={onClose} onChanged={onChanged} list={list} />
@@ -249,10 +256,11 @@ function StatusChangeForm({ request, onClose, onChanged, list }: Omit<StatusChan
       ) : null}
 
       <Group justify="flex-end" gap="sm">
-        <Button variant="default" onClick={onClose} disabled={submitting}>
+        <Button radius="xl" variant="default" onClick={onClose} disabled={submitting}>
           Keep as {humanizeEnum(order.status).toLowerCase()}
         </Button>
         <Button
+          radius="xl"
           color={destructive ? "danger" : "primaryPink"}
           loading={submitting}
           disabled={conflict !== null && !courierConfirmed}

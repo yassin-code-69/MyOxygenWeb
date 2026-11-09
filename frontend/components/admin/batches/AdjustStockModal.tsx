@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Alert, Button, Group, Modal, NumberInput, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, Textarea } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAdjustments, IconAlertCircle } from "@tabler/icons-react";
 import { zod4Resolver } from "mantine-form-zod-resolver";
 import { z } from "zod";
 import { StatusBadge } from "../../StatusBadge";
@@ -13,6 +13,7 @@ import { getErrorMessage, isApiError } from "../../../lib/api-client";
 import type { AdminAdjustmentReason, AdminBatchDTO } from "../../../types/admin";
 import { formatCalendarDate, formatCount } from "../format";
 import { applyApiFieldErrors } from "../form-errors";
+import { ModalTitle } from "../products/ModalTitle";
 
 type Direction = "remove" | "add";
 
@@ -61,7 +62,7 @@ export interface AdjustStockModalProps {
 /** `POST /admin/inventory/adjust` — manual correction or expired-stock write-off for one batch. */
 export function AdjustStockModal({ batch, onClose }: AdjustStockModalProps) {
   return (
-    <Modal opened={batch !== null} onClose={onClose} title={<Text fw={700}>Adjust stock</Text>} size="lg" closeOnClickOutside={false}>
+    <Modal opened={batch !== null} onClose={onClose} title={<ModalTitle icon={<IconAdjustments size={18} />}>Adjust stock</ModalTitle>} size="lg" closeOnClickOutside={false}>
       {batch ? <AdjustStockForm key={batch.id} batch={batch} onClose={onClose} /> : null}
     </Modal>
   );
@@ -205,10 +206,10 @@ function AdjustStockForm({ batch, onClose }: { batch: AdminBatchDTO; onClose: ()
         </Text>
 
         <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={onClose} disabled={submitting}>
+          <Button radius="xl" variant="default" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" color={form.values.direction === "remove" ? "danger" : "secondaryGreen"} loading={submitting}>
+          <Button radius="xl" type="submit" color={form.values.direction === "remove" ? "danger" : "secondaryGreen"} loading={submitting}>
             {form.values.direction === "remove" ? "Remove stock" : "Add stock"}
           </Button>
         </Group>

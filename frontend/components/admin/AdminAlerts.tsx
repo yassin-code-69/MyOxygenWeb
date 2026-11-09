@@ -1,97 +1,156 @@
 "use client";
 
 import Link from "next/link";
-import { ActionIcon, Badge, Group, Indicator, Menu, Text } from "@mantine/core";
-import { IconAlertTriangle, IconBell, IconClock, IconPackage } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import { useTelemetry } from "../../hooks/admin/use-telemetry";
+import { ActionIcon, Badge, Box, Group, Indicator, Menu, Text } from "@mantine/core";
+import { IconAlertTriangle, IconBell, IconChecks, IconClipboardList, IconPackage } from "@tabler/icons-react";
+import { useAdminAlertCounts } from "../../hooks/admin/use-telemetry";
 import { useCan } from "../../hooks/admin/use-permission";
 import { PERMISSIONS } from "../../types/auth";
 import { formatCount } from "./format";
+import { TONES, type KpiTone } from "./kit/tones";
 
 interface AlertRow {
   key: string;
   label: string;
+  description: string;
   count: number;
   icon: ReactNode;
-  color: string;
+  tone: KpiTone;
   href: string | null;
 }
 
 /**
- * Header alerts driven by real telemetry (pending orders, low stock, expiring
- * batches). Rendered only for users with ANALYTICS_READ; links appear only
- * when the user can open the target page.
+ * Notifications bell driven by real counts: pending orders (any date), low
+ * stock and batches expiring within 30 days. Each row only appears when the
+ * user may read that number, and links only when they may open the page.
  */
 export function AdminAlerts() {
-  const { data, allowed } = useTelemetry();
-  const canOrders = useCan(PERMISSIONS.ORDERS_READ);
+  const counts = useAdminAlertCounts();
   const canProducts = useCan(PERMISSIONS.PRODUCTS_READ);
+  const canAnalytics = useCan(PERMISSIONS.ANALYTICS_READ);
   const canBatches = useCan(PERMISSIONS.BATCHES_MANAGE);
 
-  if (!allowed || !data) {
-    return null;
-  }
-
-  const rows: AlertRow[] = [
-    {
+  const rows: AlertRow[] = [];
+  if (counts.pendingOrders !== null) {
+    rows.push({
       key: "pending",
       label: "Pending orders",
-      count: data.ordersByStatus.PENDING ?? 0,
-      icon: <IconClock size={16} aria-hidden />,
-      color: "warning",
-      href: canOrders ? "/admin/orders?status=PENDING" : null,
-    },
-    {
+      description: "Waiting to be confirmed",
+      count: counts.pendingOrders,
+      icon: <IconClipboardList size={16} aria-hidden />,
+      tone: "peach",
+      href: "/admin/orders?status=PENDING",
+    });
+  }
+  if (counts.lowStock !== null) {
+    rows.push({
       key: "low-stock",
       label: "Low-stock products",
-      count: data.lowStockCount,
+      description: "At or below their alert level",
+      count: counts.lowStock,
       icon: <IconPackage size={16} aria-hidden />,
-      color: "warning",
-      href: canProducts ? "/admin/products?stock=low" : null,
-    },
-    {
+      tone: "rose",
+      href: canProducts ? "/admin/products?stock=low" : canAnalytics ? "/admin/reports/inventory" : null,
+    });
+  }
+  if (counts.expiringSoon !== null) {
+    rows.push({
       key: "expiring",
-      label: "Batches expiring within 30 days",
-      count: data.expiringSoonCount,
+      label: "Expiring batches",
+      description: "Stock that expires within 30 days",
+      count: counts.expiringSoon,
       icon: <IconAlertTriangle size={16} aria-hidden />,
-      color: "danger",
+      tone: "lavender",
       href: canBatches ? "/admin/batches?status=EXPIRING_SOON" : null,
-    },
-  ];
-  const hasAlerts = rows.some((row) => row.count > 0);
-  const summary = rows.map((row) => `${formatCount(row.count)} ${row.label.toLowerCase()}`).join(", ");
+    });
+  }
+
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const summary =
+    rows.length === 0
+      ? "Notifications"
+      : `Notifications: ${rows.map((row) => `${formatCount(row.count)} ${row.label.toLowerCase()}`).join(", ")}`;
 
   return (
-    <Menu position="bottom-end" width={300} withinPortal>
-      <Indicator disabled={!hasAlerts} color="danger" size={9} offset={7} withBorder>
+    <Menu position="bottom-end" width={320} withinPortal offset={8}>
+      <Indicator
+        disabled={total === 0}
+        label={total > 99 ? "99+" : formatCount(total)}
+        color="primaryPink.8"
+        size={18}
+        offset={6}
+        withBorder
+        styles={{ indicator: { fontSize: 10, fontWeight: 700, paddingInline: 4, pointerEvents: "none" } }}
+      >
         <Menu.Target>
-          <ActionIcon variant="subtle" color="gray" size="lg" aria-label={`Store alerts: ${summary}`}>
-            <IconBell size={20} aria-hidden />
+          <ActionIcon variant="subtle" color="gray" size={42} radius="xl" aria-label={summary}>
+            <IconBell size={22} stroke={1.8} aria-hidden />
           </ActionIcon>
         </Menu.Target>
       </Indicator>
       <Menu.Dropdown>
-        <Menu.Label>Needs attention</Menu.Label>
-        {rows.map((row) => {
-          const content = (
-            <Group justify="space-between" wrap="nowrap" gap="sm">
-              <Text size="sm">{row.label}</Text>
-              <Badge variant="light" color={row.count > 0 ? row.color : "gray"} className="mo-tabular-nums">
-                {formatCount(row.count)}
-              </Badge>
-            </Group>
-          );
-          return row.href ? (
-            <Menu.Item key={row.key} component={Link} href={row.href} leftSection={row.icon}>
-              {content}
-            </Menu.Item>
-          ) : (
-            <Menu.Item key={row.key} leftSection={row.icon} disabled>
-              {content}
-            </Menu.Item>
-          );
-        })}
+        <Group justify="space-between" px="sm" pt="xs" pb={6}>
+          <Text size="sm" fw={700}>
+            Notifications
+          </Text>
+          {total > 0 ? (
+            <Badge size="sm" variant="light" color="primaryPink" className="mo-tabular-nums">
+              {formatCount(total)} new
+            </Badge>
+          ) : null}
+        </Group>
+        <Menu.Divider />
+        {total === 0 ? (
+          <Menu.Item disabled leftSection={<IconChecks size={16} aria-hidden />}>
+            You&apos;re all caught up
+          </Menu.Item>
+        ) : null}
+        {rows
+          .filter((row) => row.count > 0)
+          .map((row) => {
+            const tone = TONES[row.tone];
+            const content = (
+              <Group justify="space-between" wrap="nowrap" gap="sm">
+                <Box style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} truncate>
+                    {row.label}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate>
+                    {row.description}
+                  </Text>
+                </Box>
+                <Badge variant="light" color={tone.color} className="mo-tabular-nums" style={{ flex: "0 0 auto" }}>
+                  {formatCount(row.count)}
+                </Badge>
+              </Group>
+            );
+            const icon = (
+              <Box
+                w={30}
+                h={30}
+                display="flex"
+                style={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--mo-radius-xl)",
+                  backgroundColor: tone.iconBg,
+                  color: tone.icon,
+                }}
+              >
+                {row.icon}
+              </Box>
+            );
+            return row.href ? (
+              <Menu.Item key={row.key} component={Link} href={row.href} leftSection={icon}>
+                {content}
+              </Menu.Item>
+            ) : (
+              <Menu.Item key={row.key} leftSection={icon} disabled>
+                {content}
+              </Menu.Item>
+            );
+          })}
       </Menu.Dropdown>
     </Menu>
   );

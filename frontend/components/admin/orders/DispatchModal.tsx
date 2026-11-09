@@ -25,6 +25,7 @@ import { useOrderMutations } from "../../../hooks/admin/use-admin-orders";
 import { getErrorMessage, isApiError } from "../../../lib/api-client";
 import type { AdminDispatchPayload, AdminDispatchResult } from "../../../types/admin";
 import { formatMoney, humanizeEnum } from "../format";
+import { ModalTitle } from "../products/ModalTitle";
 import { courierName, type OrderRef } from "./order-utils";
 
 export interface DispatchModalProps {
@@ -42,7 +43,7 @@ export function DispatchModal({ order, onClose, onDispatched }: DispatchModalPro
       centered
       size="lg"
       closeOnClickOutside={false}
-      title={<Text fw={700}>{order ? `Dispatch ${order.orderNumber}` : ""}</Text>}
+      title={order ? <ModalTitle icon={<IconTruckDelivery size={18} />}>{`Dispatch ${order.orderNumber}`}</ModalTitle> : null}
     >
       {order ? <DispatchForm key={order.id} order={order} onClose={onClose} onDispatched={onDispatched} /> : null}
     </Modal>
@@ -186,7 +187,7 @@ function DispatchForm({ order, onClose, onDispatched }: { order: OrderRef } & Om
           </SimpleGrid>
         </Paper>
         <Group justify="flex-end">
-          <Button onClick={onClose}>Done</Button>
+          <Button radius="xl" onClick={onClose}>Done</Button>
         </Group>
       </Stack>
     );
@@ -240,10 +241,11 @@ function DispatchForm({ order, onClose, onDispatched }: { order: OrderRef } & Om
         </Alert>
       ) : null}
       <Group justify="flex-end" gap="sm">
-        <Button variant="default" onClick={onClose} disabled={submitting}>
+        <Button radius="xl" variant="default" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
         <Button
+          radius="xl"
           color="secondaryGreen"
           leftSection={<IconTruckDelivery size={16} aria-hidden />}
           loading={submitting}

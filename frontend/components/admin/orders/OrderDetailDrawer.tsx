@@ -24,6 +24,7 @@ import { useCan } from "../../../hooks/admin/use-permission";
 import { PERMISSIONS } from "../../../types/auth";
 import type { OrderStatus } from "../../../types/order";
 import { formatCalendarDate, formatCount, formatDhakaDateTime, formatMoney, paymentMethodLabel } from "../format";
+import { Thumb } from "../kit";
 import { QueryError } from "../QueryError";
 import { canDispatch, courierName, TRANSITION_LABELS, visibleTransitions, type OrderPermissions, type OrderRef } from "./order-utils";
 import { OrderTimeline } from "./OrderTimeline";
@@ -41,9 +42,9 @@ export interface OrderDetailDrawerProps {
 function Section({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <Paper withBorder radius="md" p="md">
-      <Group gap={6} mb="xs">
+      <Group gap={6} mb="xs" c="var(--mo-color-secondary-8)">
         {icon}
-        <Text size="xs" c="dimmed" fw={700} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+        <Text size="xs" c="var(--mo-color-text-secondary)" fw={700} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
           {title}
         </Text>
       </Group>
@@ -106,7 +107,7 @@ export function OrderDetailDrawer({
             <Title order={2} fz={22} ff="var(--mo-font-monospace)">
               {order.orderNumber}
             </Title>
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="var(--mo-color-text-muted)">
               Placed {formatDhakaDateTime(order.createdAt)} · {paymentMethodLabel(order.paymentMethod)}
             </Text>
           </Box>
@@ -116,6 +117,7 @@ export function OrderDetailDrawer({
               <Button
                 key={status}
                 size="xs"
+                radius="xl"
                 variant={status === "CANCELLED" || status === "REFUNDED" ? "light" : "filled"}
                 color={status === "CANCELLED" || status === "REFUNDED" ? "danger" : "primaryPink"}
                 onClick={() => onChangeStatus(order, status)}
@@ -124,21 +126,22 @@ export function OrderDetailDrawer({
               </Button>
             ))}
             {canDispatch(order, permissions) ? (
-              <Button size="xs" color="secondaryGreen" leftSection={<IconTruckDelivery size={14} aria-hidden />} onClick={() => onDispatch(order)}>
+              <Button size="xs" radius="xl" color="secondaryGreen" leftSection={<IconTruckDelivery size={14} aria-hidden />} onClick={() => onDispatch(order)}>
                 Dispatch to courier
               </Button>
             ) : null}
-            <Button size="xs" variant="default" leftSection={<IconFileTypePdf size={14} aria-hidden />} onClick={() => onInvoice(order)}>
+            <Button size="xs" radius="xl" variant="default" leftSection={<IconFileTypePdf size={14} aria-hidden />} onClick={() => onInvoice(order)}>
               Invoice PDF
             </Button>
             {order.trackingId || order.status === "SHIPPED" ? (
-              <Button size="xs" variant="default" leftSection={<IconTruckDelivery size={14} aria-hidden />} onClick={() => onTrack(order.id)}>
+              <Button size="xs" radius="xl" variant="default" leftSection={<IconTruckDelivery size={14} aria-hidden />} onClick={() => onTrack(order.id)}>
                 Tracking
               </Button>
             ) : null}
             {canLedger ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="subtle"
                 color="gray"
                 component={Link}
@@ -180,70 +183,77 @@ export function OrderDetailDrawer({
             <Text fw={600} mb="xs">
               Items ({formatCount(order.items.reduce((sum, item) => sum + item.quantity, 0))})
             </Text>
-            <Table.ScrollContainer minWidth={560} type="native">
-              <Table verticalSpacing="xs" aria-label={`Items in ${order.orderNumber}`}>
-                <Table.Thead bg="var(--mo-color-surface-muted)">
-                  <Table.Tr>
-                    <Table.Th scope="col">Product</Table.Th>
-                    <Table.Th scope="col">Batch</Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Qty
-                    </Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Price
-                    </Table.Th>
-                    <Table.Th scope="col" ta="right">
-                      Total
-                    </Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {order.items.map((item) => (
-                    <Table.Tr key={item.id}>
-                      <Table.Td>
-                        <Text size="sm" fw={500} lineClamp={2}>
-                          {item.productTitle}
-                        </Text>
-                        {item.productSku ? (
-                          <Text size="xs" c="dimmed" ff="var(--mo-font-monospace)">
-                            {item.productSku}
-                          </Text>
-                        ) : null}
-                      </Table.Td>
-                      <Table.Td>
-                        {item.batchNumber ? (
-                          <>
-                            <Text size="sm" ff="var(--mo-font-monospace)">
-                              {item.batchNumber}
-                            </Text>
-                            {item.batchExpiryDate ? (
-                              <Text size="xs" c="dimmed">
-                                Exp. {formatCalendarDate(item.batchExpiryDate)}
-                              </Text>
-                            ) : null}
-                          </>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        {formatCount(item.quantity)}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        {formatMoney(item.unitPrice)}
-                      </Table.Td>
-                      <Table.Td ta="right" className="mo-tabular-nums">
-                        <Text size="sm" fw={600}>
-                          {formatMoney(item.totalPrice)}
-                        </Text>
-                      </Table.Td>
+            <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
+              <Table.ScrollContainer minWidth={600} type="native">
+                <Table verticalSpacing="xs" horizontalSpacing="md" aria-label={`Items in ${order.orderNumber}`}>
+                  <Table.Thead bg="var(--mo-color-surface-muted)">
+                    <Table.Tr>
+                      <Table.Th scope="col">Product</Table.Th>
+                      <Table.Th scope="col">Batch</Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Qty
+                      </Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Price
+                      </Table.Th>
+                      <Table.Th scope="col" ta="right">
+                        Total
+                      </Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {order.items.map((item) => (
+                      <Table.Tr key={item.id}>
+                        <Table.Td>
+                          <Group gap="sm" wrap="nowrap">
+                            <Thumb src={item.productImage} size={40} />
+                            <Box style={{ minWidth: 0 }}>
+                              <Text size="sm" fw={500} lineClamp={2}>
+                                {item.productTitle}
+                              </Text>
+                              {item.productSku ? (
+                                <Text size="xs" c="var(--mo-color-text-muted)" ff="var(--mo-font-monospace)">
+                                  {item.productSku}
+                                </Text>
+                              ) : null}
+                            </Box>
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          {item.batchNumber ? (
+                            <>
+                              <Text size="sm" ff="var(--mo-font-monospace)">
+                                {item.batchNumber}
+                              </Text>
+                              {item.batchExpiryDate ? (
+                                <Text size="xs" c="var(--mo-color-text-muted)">
+                                  Exp. {formatCalendarDate(item.batchExpiryDate)}
+                                </Text>
+                              ) : null}
+                            </>
+                          ) : (
+                            <Text size="sm" c="var(--mo-color-text-muted)">
+                              —
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          {formatCount(item.quantity)}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          {formatMoney(item.unitPrice)}
+                        </Table.Td>
+                        <Table.Td ta="right" className="mo-tabular-nums">
+                          <Text size="sm" fw={600}>
+                            {formatMoney(item.totalPrice)}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Paper>
             <Stack gap={4} mt="sm" ml="auto" maw={320}>
               <TotalRow label="Subtotal" value={formatMoney(order.subtotal)} />
               {order.discountAmount > 0 ? (
@@ -266,7 +276,7 @@ export function OrderDetailDrawer({
                   {order.trackingId}
                 </Text>
               </Text>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="var(--mo-color-text-muted)">
                 Shipped {formatDhakaDateTime(order.shippedAt)}
                 {order.deliveredAt ? ` · Delivered ${formatDhakaDateTime(order.deliveredAt)}` : ""}
               </Text>

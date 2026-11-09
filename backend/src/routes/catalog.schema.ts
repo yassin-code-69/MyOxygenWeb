@@ -15,6 +15,7 @@ import {
   type DiscountPatch,
   type DiscountState,
 } from "../services/discount.service";
+import { costBreakdownTotal } from "../services/product.service";
 import { booleanQueryParam } from "./inventory.schema";
 
 // ---------------------------------------------------------------------------
@@ -27,24 +28,31 @@ const DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 const hasAtMostTwoDecimals = (value: number): boolean =>
   Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 
-/** Money: a JSON number or a numeric string with <= 2 decimals; finite, >= 0. Never coerces garbage to 0. */
-const moneyInput = z
-  .union([
-    z.number({ invalid_type_error: "must be a number" }),
-    z
-      .string()
-      .trim()
-      .regex(/^\d+(\.\d{1,2})?$/, "must be a number with at most 2 decimals")
-      .transform(Number),
-  ])
-  .pipe(
-    z
-      .number()
-      .finite("must be a finite number")
-      .nonnegative("must not be negative")
-      .max(MAX_MONEY, "is too large")
-      .refine(hasAtMostTwoDecimals, "must have at most 2 decimals"),
-  );
+/**
+ * Money: a JSON number or a numeric string with <= 2 decimals; finite, >= 0,
+ * <= `max`. Never coerces garbage to 0.
+ */
+export function moneyInputSchema(max: number = MAX_MONEY) {
+  return z
+    .union([
+      z.number({ invalid_type_error: "must be a number" }),
+      z
+        .string()
+        .trim()
+        .regex(/^\d+(\.\d{1,2})?$/, "must be a number with at most 2 decimals")
+        .transform(Number),
+    ])
+    .pipe(
+      z
+        .number()
+        .finite("must be a finite number")
+        .nonnegative("must not be negative")
+        .max(max, "is too large")
+        .refine(hasAtMostTwoDecimals, "must have at most 2 decimals"),
+    );
+}
+
+const moneyInput = moneyInputSchema();
 
 const positiveMoney = moneyInput.refine((value) => value > 0, "must be greater than 0");
 
@@ -207,6 +215,39 @@ const productFields = {
   isActive: z.boolean(),
 };
 
+/**
+ * Per-unit landed cost components (each >= 0, <= 2 decimals; omitted ones are
+ * 0). Unknown keys are rejected so a typo never silently becomes 0.
+ */
+export const costBreakdownSchema = z
+  .object({
+    supplierPrice: moneyInput.default(0),
+    shipping: moneyInput.default(0),
+    customsDuty: moneyInput.default(0),
+    packaging: moneyInput.default(0),
+    other: moneyInput.default(0),
+  })
+  .strict();
+
+/**
+ * With a cost breakdown the server derives `costPrice` from it; a `costPrice`
+ * sent alongside must equal that sum (422 on `costPrice` otherwise).
+ */
+function refineCostBreakdown(
+  data: { costPrice?: number; costBreakdown?: z.infer<typeof costBreakdownSchema> | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (!data.costBreakdown || data.costPrice === undefined) return;
+  const total = costBreakdownTotal(data.costBreakdown);
+  if (Math.round(data.costPrice * 100) !== Math.round(total * 100)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["costPrice"],
+      message: `costPrice must equal the sum of costBreakdown (${total.toFixed(2)}); omit costPrice to derive it`,
+    });
+  }
+}
+
 export const createProductSchema = z
   .object({
     categoryId: productFields.categoryId,
@@ -217,13 +258,31 @@ export const createProductSchema = z
     brand: productFields.brand.optional(),
     description: productFields.description,
     basePrice: productFields.basePrice,
-    costPrice: productFields.costPrice,
+    /** Required unless `costBreakdown` is sent (then it is derived from it). */
+    costPrice: productFields.costPrice.optional(),
+    costBreakdown: costBreakdownSchema.nullable().optional(),
     images: productFields.images.default([]),
     requiresBatchTracking: productFields.requiresBatchTracking.default(false),
     lowStockThreshold: productFields.lowStockThreshold.default(5),
     isActive: productFields.isActive.default(true),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.costPrice === undefined && !data.costBreakdown) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["costPrice"],
+        message: "costPrice is required (or send costBreakdown to derive it)",
+      });
+    }
+    refineCostBreakdown(data, ctx);
+  })
+  .transform(({ costPrice, costBreakdown, ...rest }) => ({
+    ...rest,
+    costBreakdown: costBreakdown ?? null,
+    // Both undefined is rejected above; the fallback only satisfies the type.
+    costPrice: costBreakdown ? costBreakdownTotal(costBreakdown) : (costPrice ?? 0),
+  }));
 
 export const updateProductSchema = z
   .object({
@@ -237,6 +296,8 @@ export const updateProductSchema = z
     description: productFields.description.optional(),
     basePrice: productFields.basePrice.optional(),
     costPrice: productFields.costPrice.optional(),
+    /** Object: replaces the breakdown and sets costPrice to its sum. null: clears it (costPrice kept / as sent). */
+    costBreakdown: costBreakdownSchema.nullable().optional(),
     images: productFields.images.optional(),
     requiresBatchTracking: productFields.requiresBatchTracking.optional(),
     lowStockThreshold: productFields.lowStockThreshold.optional(),
@@ -245,7 +306,11 @@ export const updateProductSchema = z
   .strict()
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: "At least one field must be provided",
-  });
+  })
+  .superRefine(refineCostBreakdown)
+  .transform((data) =>
+    data.costBreakdown ? { ...data, costPrice: costBreakdownTotal(data.costBreakdown) } : data,
+  );
 
 // ---------------------------------------------------------------------------
 // Discounts

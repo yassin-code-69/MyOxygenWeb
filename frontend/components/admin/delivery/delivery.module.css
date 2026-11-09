@@ -1,0 +1,17 @@
+/* Delivery page details. Tokens only. */
+
+.orderLink {
+  display: inline-block;
+  font-family: var(--mo-font-monospace);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 700;
+  color: var(--mo-color-text);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--mo-radius-xs);
+}
+
+.orderLink:hover {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}

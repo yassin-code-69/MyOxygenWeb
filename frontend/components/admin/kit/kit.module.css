@@ -1,0 +1,375 @@
+/*
+ * Admin UI kit surfaces. Colors, radii, shadows and motion come from the
+ * --mo-* token variables only. Only transform / opacity are animated.
+ */
+
+/* ------------------------------------------------------------------------- */
+/* Section card                                                              */
+/* ------------------------------------------------------------------------- */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--mo-color-surface);
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-md);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm);
+  flex-wrap: wrap;
+}
+
+.cardTitle {
+  font-family: var(--mo-font-heading);
+  font-size: var(--mantine-font-size-md);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--mo-color-text);
+  margin: 0;
+}
+
+.cardBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.viewAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mo-color-secondary-8);
+  white-space: nowrap;
+  text-decoration: none;
+  border-radius: var(--mo-radius-sm);
+}
+
+.viewAll:hover {
+  color: var(--mo-color-secondary-9);
+  text-decoration: underline;
+}
+
+.viewAll svg {
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.viewAll:hover svg {
+  transform: translateX(2px);
+}
+
+/* ------------------------------------------------------------------------- */
+/* KPI card                                                                  */
+/* ------------------------------------------------------------------------- */
+
+.kpi {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-sm);
+  height: 100%;
+  min-height: 132px;
+  padding: var(--mantine-spacing-lg);
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--kpi-border);
+  background-color: var(--kpi-surface);
+  box-shadow: var(--mo-shadow-xs);
+}
+
+.kpiIcon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--kpi-icon-bg);
+  color: var(--kpi-icon);
+}
+
+.kpiBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kpiLabel {
+  min-height: 20px;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--mo-color-text-muted-on-tint);
+}
+
+.kpiValue {
+  min-height: 36px;
+  margin-top: 4px;
+  font-family: var(--mo-font-heading);
+  font-size: 1.625rem;
+  font-weight: 600;
+  line-height: 36px;
+  letter-spacing: -0.01em;
+  color: var(--mo-color-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpiMeta {
+  min-height: 18px;
+  margin-top: 6px;
+  line-height: 18px;
+}
+
+.kpiCaption {
+  min-height: 18px;
+  font-size: var(--mantine-font-size-xs);
+  line-height: 18px;
+  color: var(--mo-color-text-muted-on-tint);
+}
+
+.kpiLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  color: var(--kpi-link, var(--mo-color-secondary-8));
+  text-decoration: none;
+  border-radius: var(--mo-radius-sm);
+}
+
+.kpiLink:hover {
+  text-decoration: underline;
+}
+
+.kpiLink svg {
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.kpiLink:hover svg {
+  transform: translateX(2px);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Lists (ranked products, activity, progress)                               */
+/* ------------------------------------------------------------------------- */
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-height: 56px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--mo-color-border-subtle);
+}
+
+.listRow:last-child {
+  border-bottom: 0;
+}
+
+.rank {
+  flex: 0 0 18px;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  color: var(--mo-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.thumb {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface-muted);
+  border: 1px solid var(--mo-color-border-subtle);
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cellLink {
+  color: var(--mo-color-text);
+  text-decoration: none;
+  border-radius: var(--mo-radius-xs);
+}
+
+.cellLink:hover {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}
+
+.dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--mo-radius-xl);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Quick actions                                                             */
+/* ------------------------------------------------------------------------- */
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 92px;
+  padding: 12px 8px;
+  text-align: center;
+  border-radius: var(--mo-radius-md);
+  border: 1px solid var(--tile-border);
+  background-color: var(--tile-surface);
+  color: var(--mo-color-text);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: transform var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+@media (hover: hover) {
+  .tile:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.tileIcon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--tile-icon-bg);
+  color: var(--tile-icon);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Charts                                                                    */
+/* ------------------------------------------------------------------------- */
+
+.chartFrame {
+  position: relative;
+}
+
+.chartOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.highlightPill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 10px;
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-secondary-8);
+  color: var(--mo-color-text-on-dark);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--mo-shadow-sm);
+  transition: opacity var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.highlightPill::after {
+  content: "";
+  position: absolute;
+  left: var(--pill-arrow-left, 50%);
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  background-color: inherit;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 1px;
+}
+
+.highlightPill[data-hidden] {
+  opacity: 0;
+}
+
+.tooltip {
+  min-width: 150px;
+  padding: 8px 12px;
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface);
+  border: 1px solid var(--mo-color-border);
+  box-shadow: var(--mo-shadow-dropdown);
+}
+
+.donutCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Date range picker                                                         */
+/* ------------------------------------------------------------------------- */
+
+.presetButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--mo-radius-sm);
+  color: var(--mo-color-text-strong);
+  font-size: var(--mantine-font-size-sm);
+  text-align: left;
+}
+
+.presetButton:hover {
+  background-color: var(--mo-color-surface-muted);
+}
+
+.presetButton[data-active] {
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-secondary-8);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .viewAll svg,
+  .kpiLink svg,
+  .highlightPill {
+    transition: none;
+  }
+}

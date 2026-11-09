@@ -5,7 +5,7 @@ import { Alert, Button, Group, List, Modal, NumberInput, SimpleGrid, Stack, Text
 import { DatePickerInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCalendar, IconCircleCheck, IconInfoCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconCalendar, IconCircleCheck, IconInfoCircle, IconPackageImport } from "@tabler/icons-react";
 import { zod4Resolver } from "mantine-form-zod-resolver";
 import { z } from "zod";
 import { useInventoryMutations } from "../../../hooks/admin/use-batches";
@@ -13,6 +13,7 @@ import { getErrorMessage } from "../../../lib/api-client";
 import type { AdminImportBatchPayload, AdminImportBatchResult } from "../../../types/admin";
 import { addDaysToCalendarDate, formatCalendarDate, formatCount, todayInDhaka } from "../format";
 import { applyApiFieldErrors } from "../form-errors";
+import { ModalTitle } from "../products/ModalTitle";
 import { ProductPicker, type ProductOption } from "../ProductPicker";
 
 /** A type alias (not an interface) so it satisfies the resolver's `Record<string, unknown>`. */
@@ -73,7 +74,7 @@ export interface ImportBatchModalProps {
 export function ImportBatchModal({ opened, onClose, initialProduct = null }: ImportBatchModalProps) {
   const [formKey, setFormKey] = useState(0);
   return (
-    <Modal opened={opened} onClose={onClose} size="lg" title={<Text fw={700}>Import a batch</Text>} closeOnClickOutside={false}>
+    <Modal opened={opened} onClose={onClose} size="lg" title={<ModalTitle icon={<IconPackageImport size={18} />}>Import a batch</ModalTitle>} closeOnClickOutside={false}>
       {opened ? (
         <ImportBatchForm
           key={`${formKey}-${initialProduct?.id ?? "none"}`}
@@ -179,10 +180,10 @@ function ImportBatchForm({
           </Alert>
         ) : null}
         <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={onImportAnother}>
+          <Button radius="xl" variant="default" onClick={onImportAnother}>
             Import another
           </Button>
-          <Button onClick={onClose}>Done</Button>
+          <Button radius="xl" onClick={onClose}>Done</Button>
         </Group>
       </Stack>
     );
@@ -247,10 +248,10 @@ function ImportBatchForm({
           automatically once this batch is in.
         </Text>
         <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={onClose} disabled={submitting}>
+          <Button radius="xl" variant="default" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" color="secondaryGreen" loading={submitting}>
+          <Button radius="xl" type="submit" color="secondaryGreen" loading={submitting}>
             Import batch
           </Button>
         </Group>

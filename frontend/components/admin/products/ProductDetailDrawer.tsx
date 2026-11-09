@@ -6,8 +6,10 @@ import {
   Badge,
   Box,
   Button,
+  Divider,
   Drawer,
   Group,
+  Paper,
   ScrollArea,
   SimpleGrid,
   Skeleton,
@@ -16,17 +18,28 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { IconDiscount, IconExternalLink, IconFileSpreadsheet, IconPackageImport, IconPencil } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconCalculator,
+  IconDiscount,
+  IconExternalLink,
+  IconFileSpreadsheet,
+  IconPackageImport,
+  IconPencil,
+  IconReceipt2,
+} from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { ImageWithFallback } from "../../ImageWithFallback";
 import { StatusBadge } from "../../StatusBadge";
 import { useAdminProduct } from "../../../hooks/admin/use-admin-products";
 import { useCan } from "../../../hooks/admin/use-permission";
 import { PERMISSIONS } from "../../../types/auth";
-import type { AdminProductDTO } from "../../../types/admin";
-import { formatCalendarDate, formatCount, formatDhakaDateTime, formatMoney } from "../format";
+import { ADMIN_COST_COMPONENTS, type AdminProductDTO } from "../../../types/admin";
+import { formatCalendarDate, formatCount, formatDhakaDateTime, formatMoney, formatPercent } from "../format";
+import { Thumb } from "../kit";
 import { LISTING_STATUS_HELP, ListingStatusBadge } from "../ListingStatusBadge";
 import { QueryError } from "../QueryError";
+import { COST_COMPONENT_LABELS, landedCost, marginColor, marginPercent } from "./pricing";
 
 export interface ProductDetailDrawerProps {
   productId: string | null;
@@ -37,7 +50,7 @@ export interface ProductDetailDrawerProps {
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box>
-      <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+      <Text size="xs" c="var(--mo-color-text-secondary)" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
         {label}
       </Text>
       <Box mt={2}>{typeof children === "string" ? <Text size="sm">{children}</Text> : children}</Box>
@@ -45,7 +58,91 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Product facts, pricing and every batch (`GET /admin/catalog/products/:id`). */
+function AmountRow({ label, value, strong = false, tone }: { label: ReactNode; value: string; strong?: boolean; tone?: string }) {
+  return (
+    <Group justify="space-between" gap="sm" wrap="nowrap" py={3}>
+      <Text size="sm" c={strong ? "var(--mo-color-text)" : "var(--mo-color-text-secondary)"} fw={strong ? 700 : 400}>
+        {label}
+      </Text>
+      <Text size="sm" fw={strong ? 700 : 500} c={tone ?? "var(--mo-color-text)"} className="mo-tabular-nums" style={{ whiteSpace: "nowrap" }}>
+        {value}
+      </Text>
+    </Group>
+  );
+}
+
+function CardTitle({ icon, children }: { icon: ReactNode; children: string }) {
+  return (
+    <Group gap={6} mb="xs" wrap="nowrap">
+      {icon}
+      <Text size="sm" fw={600} c="var(--mo-color-text)">
+        {children}
+      </Text>
+    </Group>
+  );
+}
+
+/** Mockup "Cost breakdown (per unit)" + "Selling price & profit" cards. */
+function PricingCards({ product }: { product: AdminProductDTO }) {
+  const breakdown = product.costBreakdown ?? null;
+  const cost = breakdown ? landedCost(breakdown) : product.costPrice;
+  const discount = product.basePrice - product.effectivePrice;
+  const profit = product.effectivePrice - cost;
+  const margin = marginPercent(product.effectivePrice, cost);
+  const color = marginColor(margin);
+
+  return (
+    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+      <Paper withBorder radius="md" p="md">
+        <CardTitle icon={<IconCalculator size={16} color="var(--mo-color-secondary-8)" aria-hidden />}>Cost breakdown (per unit)</CardTitle>
+        {breakdown ? (
+          <>
+            {ADMIN_COST_COMPONENTS.map((key) => (
+              <AmountRow key={key} label={COST_COMPONENT_LABELS[key]} value={formatMoney(breakdown[key])} />
+            ))}
+          </>
+        ) : (
+          <Text size="xs" c="var(--mo-color-text-secondary)" mb={6}>
+            Not itemised. Edit the product to split the landed cost into supplier price, shipping, customs, packaging and
+            other costs.
+          </Text>
+        )}
+        <Divider my={6} color="var(--mo-color-border-subtle)" />
+        <AmountRow label="Total cost (landed)" value={formatMoney(cost)} strong />
+      </Paper>
+      <Paper withBorder radius="md" p="md">
+        <CardTitle icon={<IconReceipt2 size={16} color="var(--mo-color-secondary-8)" aria-hidden />}>Selling price & profit</CardTitle>
+        <AmountRow label="Base price" value={formatMoney(product.basePrice)} />
+        <AmountRow
+          label={product.activeDiscount ? (product.activeDiscount.isFlashSale ? "Flash sale discount" : "Discount") : "Discount"}
+          value={discount > 0 ? `−${formatMoney(discount)}` : formatMoney(0)}
+        />
+        <AmountRow label="Selling price today" value={formatMoney(product.effectivePrice)} strong />
+        <AmountRow
+          label="Profit per unit"
+          value={`${profit < 0 ? "−" : ""}${formatMoney(Math.abs(profit))}`}
+          tone={profit < 0 ? "var(--mo-color-text-danger)" : "var(--mo-color-text-success)"}
+        />
+        <Group
+          justify="space-between"
+          mt={8}
+          px="sm"
+          py={6}
+          style={{ borderRadius: "var(--mo-radius-sm)", backgroundColor: `var(--mantine-color-${color}-0)` }}
+        >
+          <Text size="sm" fw={600} c={`var(--mantine-color-${color}-9)`}>
+            Margin
+          </Text>
+          <Text fw={700} c={`var(--mantine-color-${color}-9)`} className="mo-tabular-nums">
+            {formatPercent(margin)}
+          </Text>
+        </Group>
+      </Paper>
+    </SimpleGrid>
+  );
+}
+
+/** Product facts, pricing & landed cost, and every batch (`GET /admin/catalog/products/:id`). */
 export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetailDrawerProps) {
   const { data: product, error, isLoading, mutate } = useAdminProduct(productId);
   const canWrite = useCan(PERMISSIONS.PRODUCTS_WRITE);
@@ -63,14 +160,24 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
       scrollAreaComponent={ScrollArea.Autosize}
     >
       {isLoading && !product ? (
-        <Stack gap="md">
-          <Skeleton height={28} width="70%" />
-          <Skeleton height={14} width="40%" radius="xl" />
+        <Stack gap="md" aria-busy>
+          <Group gap="md" wrap="nowrap">
+            <Skeleton height={72} width={72} radius="md" />
+            <Stack gap={8} style={{ flex: 1 }}>
+              <Skeleton height={14} width={140} radius="xl" />
+              <Skeleton height={24} width="70%" />
+              <Skeleton height={12} width="40%" radius="xl" />
+            </Stack>
+          </Group>
           <Group gap="sm">
-            {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} height={88} width={88} radius="md" />
+            {Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} height={30} width={120} radius="xl" />
             ))}
           </Group>
+          <SimpleGrid cols={2} spacing="md">
+            <Skeleton height={210} radius="md" />
+            <Skeleton height={210} radius="md" />
+          </SimpleGrid>
           <Skeleton height={140} radius="md" />
           <Skeleton height={220} radius="md" />
         </Stack>
@@ -80,37 +187,51 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
 
       {product ? (
         <Stack gap="lg">
-          <Box>
-            <Group gap="xs" mb={6}>
-              <ListingStatusBadge status={product.listingStatus} />
-              {product.activeDiscount ? (
-                <Badge variant="light" color={product.activeDiscount.isFlashSale ? "accentPurple" : "primaryPink"} leftSection={<IconDiscount size={12} aria-hidden />}>
-                  {product.activeDiscount.isFlashSale ? "Flash sale" : "Discount"} −{product.discountPercent}%
-                </Badge>
-              ) : null}
-            </Group>
-            <Title order={2} fz={22}>
-              {product.title}
-            </Title>
-            <Text size="sm" c="dimmed" ff="var(--mo-font-monospace)">
-              {product.sku}
-            </Text>
-            <Text size="sm" c="dimmed" mt={6}>
-              {LISTING_STATUS_HELP[product.listingStatus]}
-            </Text>
-          </Box>
+          <Group gap="md" wrap="nowrap" align="flex-start">
+            <Thumb src={product.images[0]} size={72} alt={product.title} />
+            <Box style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <Group gap="xs" mb={6}>
+                <ListingStatusBadge status={product.listingStatus} />
+                {product.activeDiscount ? (
+                  <Badge
+                    variant="light"
+                    radius="xl"
+                    tt="none"
+                    color={product.activeDiscount.isFlashSale ? "accentPurple" : "primaryPink"}
+                    leftSection={product.activeDiscount.isFlashSale ? <IconBolt size={12} aria-hidden /> : <IconDiscount size={12} aria-hidden />}
+                  >
+                    {product.activeDiscount.isFlashSale ? "Flash sale" : "Discount"} −{Math.round(product.discountPercent)}%
+                  </Badge>
+                ) : null}
+              </Group>
+              <Title order={2} fz={20} lh={1.3}>
+                {product.title}
+              </Title>
+              <Text size="sm" c="var(--mo-color-text-secondary)">
+                <Text component="span" inherit ff="var(--mo-font-monospace)">
+                  {product.sku}
+                </Text>{" "}
+                · {product.category.name}
+                {product.brand ? ` · ${product.brand}` : ""}
+              </Text>
+            </Box>
+          </Group>
+          <Text size="sm" c="var(--mo-color-text-secondary)" mt={-8}>
+            {LISTING_STATUS_HELP[product.listingStatus]}
+          </Text>
 
           <Group gap="sm" wrap="wrap">
             {canWrite && onEdit ? (
-              <Button size="xs" variant="light" leftSection={<IconPencil size={14} aria-hidden />} onClick={() => onEdit(product)}>
+              <Button size="xs" radius="xl" variant="light" color="secondaryGreen" leftSection={<IconPencil size={14} aria-hidden />} onClick={() => onEdit(product)}>
                 Edit product
               </Button>
             ) : null}
             {canBatches ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="light"
-                color="secondaryGreen"
+                color="info"
                 component={Link}
                 href={`/admin/batches?import=${product.id}`}
                 leftSection={<IconPackageImport size={14} aria-hidden />}
@@ -121,6 +242,7 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
             {canLedger ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="default"
                 component={Link}
                 href={`/admin/ledger?productId=${product.id}`}
@@ -132,6 +254,7 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
             {canDiscounts ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="default"
                 component={Link}
                 href={`/admin/discounts?new=automatic&productId=${product.id}`}
@@ -143,6 +266,7 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
             {product.listingStatus === "ACTIVE" ? (
               <Button
                 size="xs"
+                radius="xl"
                 variant="subtle"
                 color="gray"
                 component="a"
@@ -156,59 +280,49 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
             ) : null}
           </Group>
 
-          {product.images.length > 0 ? (
+          <PricingCards product={product} />
+
+          {product.images.length > 1 ? (
             <ScrollArea type="auto" offsetScrollbars>
               <Group gap="sm" wrap="nowrap">
                 {product.images.map((src, index) => (
                   <Box
                     key={src}
-                    w={88}
-                    h={88}
-                    style={{ position: "relative", flexShrink: 0, borderRadius: "var(--mo-radius-md)", overflow: "hidden", border: "1px solid var(--mo-color-border-subtle)" }}
+                    w={80}
+                    h={80}
+                    style={{
+                      position: "relative",
+                      flexShrink: 0,
+                      borderRadius: "var(--mo-radius-md)",
+                      overflow: "hidden",
+                      border: "1px solid var(--mo-color-border-subtle)",
+                    }}
                   >
-                    <ImageWithFallback src={src} alt={`${product.title} image ${index + 1}`} fill sizes="88px" style={{ objectFit: "cover" }} />
+                    <ImageWithFallback src={src} alt={`${product.title} image ${index + 1}`} fill sizes="80px" style={{ objectFit: "cover" }} />
                   </Box>
                 ))}
               </Group>
             </ScrollArea>
-          ) : (
-            <Text size="sm" c="dimmed">
-              No images yet.
-            </Text>
-          )}
+          ) : null}
 
-          <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="md" verticalSpacing="md">
-            <Fact label="Category">{product.category.name}</Fact>
-            <Fact label="Brand">{product.brand ?? "—"}</Fact>
-            <Fact label="Selling price">
-              <Text size="sm" fw={600} className="mo-tabular-nums">
-                {formatMoney(product.effectivePrice)}
-                {product.effectivePrice < product.basePrice ? (
-                  <Text component="span" size="xs" c="dimmed" td="line-through" ml={6}>
-                    {formatMoney(product.basePrice)}
+          <Paper withBorder radius="md" p="md">
+            <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="md" verticalSpacing="md">
+              <Fact label="Stock">
+                <Group gap={6}>
+                  <Text size="sm" fw={700} className="mo-tabular-nums">
+                    {formatCount(product.totalStock)}
                   </Text>
-                ) : null}
-              </Text>
-            </Fact>
-            <Fact label="Cost price">
-              <Text size="sm" className="mo-tabular-nums">
-                {formatMoney(product.costPrice)}
-              </Text>
-            </Fact>
-            <Fact label="Stock">
-              <Group gap={6}>
-                <Text size="sm" fw={600} className="mo-tabular-nums">
-                  {formatCount(product.totalStock)}
-                </Text>
-                {product.isOutOfStock ? <StatusBadge status="OUT_OF_STOCK" size="xs" /> : null}
-                {!product.isOutOfStock && product.isLowStock ? <StatusBadge status="LOW_STOCK" size="xs" /> : null}
-              </Group>
-            </Fact>
-            <Fact label="Low-stock alert at">{formatCount(product.lowStockThreshold)}</Fact>
-            <Fact label="Batch tracking">{product.requiresBatchTracking ? "On (FEFO)" : "Off"}</Fact>
-            <Fact label="Earliest expiry">{product.earliestExpiry ? formatCalendarDate(product.earliestExpiry) : "—"}</Fact>
-            <Fact label="Updated">{formatDhakaDateTime(product.updatedAt)}</Fact>
-          </SimpleGrid>
+                  {product.isOutOfStock ? <StatusBadge status="OUT_OF_STOCK" size="xs" /> : null}
+                  {!product.isOutOfStock && product.isLowStock ? <StatusBadge status="LOW_STOCK" size="xs" /> : null}
+                </Group>
+              </Fact>
+              <Fact label="Low-stock alert at">{formatCount(product.lowStockThreshold)}</Fact>
+              <Fact label="Batch tracking">{product.requiresBatchTracking ? "On (FEFO)" : "Off"}</Fact>
+              <Fact label="Earliest expiry">{product.earliestExpiry ? formatCalendarDate(product.earliestExpiry) : "—"}</Fact>
+              <Fact label="Created">{formatDhakaDateTime(product.createdAt)}</Fact>
+              <Fact label="Updated">{formatDhakaDateTime(product.updatedAt)}</Fact>
+            </SimpleGrid>
+          </Paper>
 
           {product.autoDeactivatedAt ? (
             <Alert color="warning" variant="light" radius="md">
@@ -220,7 +334,8 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
             <Text fw={600} mb={6}>
               Description
             </Text>
-            <Text size="sm" c="var(--mo-color-text-secondary)" style={{ whiteSpace: "pre-line" }}>
+            {/* overflow-wrap: anywhere — a long unbroken word or URL must wrap, never widen the drawer. */}
+            <Text size="sm" c="var(--mo-color-text-secondary)" style={{ whiteSpace: "pre-line", overflowWrap: "anywhere" }}>
               {product.description}
             </Text>
           </Box>
@@ -228,57 +343,70 @@ export function ProductDetailDrawer({ productId, onClose, onEdit }: ProductDetai
           <Box>
             <Group justify="space-between" mb="xs">
               <Text fw={600}>Batches ({formatCount(product.batches.length)})</Text>
+              {canBatches && product.batches.length > 0 ? (
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  color="secondaryGreen"
+                  component={Link}
+                  href={`/admin/batches?productId=${product.id}`}
+                >
+                  Open in Batch Inspector
+                </Button>
+              ) : null}
             </Group>
             {product.batches.length === 0 ? (
-              <Text size="sm" c="dimmed">
+              <Text size="sm" c="var(--mo-color-text-secondary)">
                 No batches yet. {canBatches ? "Import one to put this product on sale." : ""}
               </Text>
             ) : (
-              <Table.ScrollContainer minWidth={560} type="native">
-                <Table verticalSpacing="xs" aria-label={`Batches of ${product.title}`}>
-                  <Table.Thead bg="var(--mo-color-surface-muted)">
-                    <Table.Tr>
-                      <Table.Th scope="col">Batch</Table.Th>
-                      <Table.Th scope="col">Expiry</Table.Th>
-                      <Table.Th scope="col" ta="right">
-                        Available
-                      </Table.Th>
-                      <Table.Th scope="col">Health</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {product.batches.map((batch) => (
-                      <Table.Tr key={batch.id}>
-                        <Table.Td>
-                          <Text size="sm" fw={600} ff="var(--mo-font-monospace)">
-                            {batch.batchNumber}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            Made {batch.manufactureDate ? formatCalendarDate(batch.manufactureDate) : "—"}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm">{formatCalendarDate(batch.expiryDate)}</Text>
-                          <Text size="xs" c="dimmed">
-                            {batch.daysUntilExpiry > 0 ? `${formatCount(batch.daysUntilExpiry)} days left` : "Expired"}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td ta="right" className="mo-tabular-nums">
-                          <Text size="sm" fw={600}>
-                            {formatCount(batch.availableQuantity)}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            of {formatCount(batch.initialQuantity)}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <StatusBadge status={batch.healthStatus} size="sm" />
-                        </Table.Td>
+              <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
+                <Table.ScrollContainer minWidth={520} type="native">
+                  <Table verticalSpacing="xs" horizontalSpacing="md" aria-label={`Batches of ${product.title}`}>
+                    <Table.Thead bg="var(--mo-color-surface-muted)">
+                      <Table.Tr>
+                        <Table.Th scope="col">Batch</Table.Th>
+                        <Table.Th scope="col">Expiry</Table.Th>
+                        <Table.Th scope="col" ta="right">
+                          Available
+                        </Table.Th>
+                        <Table.Th scope="col">Health</Table.Th>
                       </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {product.batches.map((batch) => (
+                        <Table.Tr key={batch.id}>
+                          <Table.Td>
+                            <Text size="sm" fw={600} ff="var(--mo-font-monospace)">
+                              {batch.batchNumber}
+                            </Text>
+                            <Text size="xs" c="var(--mo-color-text-muted)">
+                              Made {batch.manufactureDate ? formatCalendarDate(batch.manufactureDate) : "—"}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{formatCalendarDate(batch.expiryDate)}</Text>
+                            <Text size="xs" c="var(--mo-color-text-muted)">
+                              {batch.daysUntilExpiry > 0 ? `${formatCount(batch.daysUntilExpiry)} days left` : "Expired"}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td ta="right" className="mo-tabular-nums">
+                            <Text size="sm" fw={600}>
+                              {formatCount(batch.availableQuantity)}
+                            </Text>
+                            <Text size="xs" c="var(--mo-color-text-muted)">
+                              of {formatCount(batch.initialQuantity)}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <StatusBadge status={batch.healthStatus} size="sm" />
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </Paper>
             )}
           </Box>
         </Stack>

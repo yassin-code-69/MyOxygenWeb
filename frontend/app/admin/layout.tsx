@@ -1,5 +1,8 @@
+import "@mantine/charts/styles.css";
+import "@mantine/spotlight/styles.css";
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
+import packageJson from "../../package.json";
 import { AdminShell } from "../../components/admin/AdminShell";
 
 export const metadata: Metadata = {
@@ -11,7 +14,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** Every `/admin` route renders inside the guarded back-office shell. */
+/**
+ * Every `/admin` route renders inside the guarded back-office shell.
+ * The version is read from package.json here (a server component), so only
+ * the string reaches the client bundle.
+ */
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <AdminShell>{children}</AdminShell>;
+  return <AdminShell version={packageJson.version}>{children}</AdminShell>;
 }

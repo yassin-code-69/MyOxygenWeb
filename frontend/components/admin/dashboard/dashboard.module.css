@@ -1,0 +1,121 @@
+/* Dashboard-only details. Tokens only; only opacity animates. */
+
+.clockCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.clockIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface);
+  color: var(--mo-color-text-secondary);
+}
+
+.storePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--mo-radius-xl);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.storePill[data-status="online"] {
+  background-color: var(--mo-color-secondary-0);
+  border: 1px solid var(--mo-color-secondary-1);
+  color: var(--mo-color-secondary-8);
+}
+
+.storePill[data-status="offline"] {
+  background-color: var(--mo-color-danger-0);
+  border: 1px solid var(--mo-color-danger-1);
+  color: var(--mo-color-danger-8);
+}
+
+.storePill[data-status="checking"] {
+  background-color: var(--mo-color-surface-muted);
+  border: 1px solid var(--mo-color-border);
+  color: var(--mo-color-text-secondary);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--mo-radius-xl);
+  background-color: currentColor;
+}
+
+.storePill[data-status="online"] .statusDot {
+  animation: mo-status-pulse 2.4s var(--mo-ease-in-out) infinite;
+}
+
+@keyframes mo-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The recent-orders table adapts to its card width (container query). */
+.tableFrame {
+  container-type: inline-size;
+}
+
+@container (max-width: 600px) {
+  .wideOnly {
+    display: none;
+  }
+}
+
+@container (max-width: 460px) {
+  .midOnly {
+    display: none;
+  }
+}
+
+.table th {
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mo-color-text-secondary);
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.orderLink {
+  display: block;
+  white-space: nowrap;
+  font-family: var(--mo-font-monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--mo-color-text-muted);
+  text-decoration: none;
+  border-radius: var(--mo-radius-xs);
+}
+
+a.orderLink:hover {
+  color: var(--mo-color-secondary-8);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storePill[data-status="online"] .statusDot {
+    animation: none;
+  }
+}

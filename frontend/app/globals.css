@@ -59,6 +59,14 @@ video {
   max-width: 100%;
 }
 
+/* User-entered text (descriptions, notes, names, URLs) inside drawers and
+   modals must wrap — a single long unbroken word must never make the panel
+   wider than the screen. overflow-wrap is inherited by everything inside. */
+.mantine-Drawer-body,
+.mantine-Modal-body {
+  overflow-wrap: anywhere;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Focus — visible green ring for keyboard users (WCAG 2.4.7 / 1.4.11)       */
 /* `mo-focus-ring` is Mantine's theme.focusClassName.                        */
@@ -178,6 +186,15 @@ video {
     ):hover {
     transform: translateY(-1px);
   }
+}
+
+/* Mantine positions the Button loader at left/top 50% and centres it with the
+   inline transform of its slide transition. With theme.respectReducedMotion and
+   an OS "reduce motion" setting that transition has 0 ms duration and applies no
+   style at all, so the spinner sat half its size down-right and got clipped.
+   This fallback centres it; when the transition runs, its inline transform wins. */
+.mantine-Button-loader {
+  transform: translate(-50%, -50%);
 }
 
 /* ------------------------------------------------------------------------- */

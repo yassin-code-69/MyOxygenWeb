@@ -16,6 +16,7 @@ Prices are in Bangladeshi Taka (৳, BDT); business dates use `Asia/Dhaka`.
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Seeded development accounts](#seeded-development-accounts)
+- [Admin panel](#admin-panel)
 - [Testing](#testing)
 - [Useful scripts](#useful-scripts)
 - [Environment variables](#environment-variables)
@@ -148,6 +149,22 @@ cd ../frontend && bun run dev      # frontend → http://localhost:3000  (/admin
 
 > **Development only.** These passwords are public (they are in this repository). Never seed them into a production database; if they already exist there, deactivate them or rotate their passwords before go-live (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)).
 
+## Admin panel
+
+`/admin` (staff roles only) follows the client mockups in [`docs/design/admin/`](docs/design/admin). The sidebar only shows what the signed-in role may use (see the RBAC matrix in [`backend/README.md`](backend/README.md)); `Ctrl K` opens a global search over products, orders and customers.
+
+| Area | Pages |
+|---|---|
+| Dashboard | KPIs vs the previous 7 days, sales trend, orders by status, recent orders, top products, latest customers, top categories, inventory alerts, quick actions |
+| Orders & customers | Orders (status tabs, payment filters, dispatch, tracking, invoices), Customers (spend, orders, addresses), Delivery & Tracking |
+| Catalog | All products (cost breakdown → landed cost), Categories, Brands, Coupons & Offers |
+| Inventory | Batch Inspector, Expiry / FEFO (scrap expired stock), Stock Ledger |
+| Finance | Payments (transactions, refunds), Invoices, Expenses (super admin) |
+| Reports | Sales, Product, Customer, Inventory, Profit & Margin (super admin) — all with date ranges and CSV export where tables are large |
+| Settings | Admin Roles (staff accounts, role × permission matrix), System status (DB, jobs, integrations — never secrets) |
+
+Campaigns, Banners, Push notifications, Content (pages/blog/media) and Store settings are listed as **Coming soon**: they have no backend yet. For realistic local dashboards run `NODE_ENV=test bun run db:seed:demo-history` in `backend/` against the local test database (never production).
+
 ## Testing
 
 The backend test-suite mutates data, so it **only ever runs against a local database**: `bun test` loads `backend/.env.test` (localhost:54329), and both the test preload (`src/tests/setup.ts`) and the DB client refuse any non-local host.
@@ -183,6 +200,7 @@ Frontend checks: `bun run typecheck`, `bun run lint`, `bun run build` in `fronte
 | `bun run db:migrate` | apply pending migrations (uses `DIRECT_URL`) |
 | `bun run db:check` | verify migration snapshots are consistent |
 | `bun run db:seed` | idempotent seed (dev accounts only outside production) |
+| `bun run db:seed:demo-history` | dev only: ~170 backdated demo orders, 40 demo customers, expenses and cost breakdowns for dashboards. Refuses production and non-localhost databases. |
 | `bun run db:studio` | Drizzle Studio |
 
 **Frontend** (`cd frontend`)
@@ -289,6 +307,8 @@ Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) proposes weekly 
 | Tests: port `54329` in use | `bun run test:db:down`, or stop whatever else listens on it. |
 | Frontend calls `localhost:4000` in production | `NEXT_PUBLIC_API_URL` was not set at build time. Rebuild with the right value. |
 | Browser `CORS` errors | Add the exact storefront origin (scheme + host + port) to `CORS_ORIGIN`. |
+| `next build` fails with `Can't resolve '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google queries have exactly one entry` | A Turbopack cache bug with Google fonts when a previous build's cache is reused. Delete the build cache and rebuild: `rm -rf frontend/.next` (PowerShell: `Remove-Item -Recurse -Force frontend\.next`). CI and Docker always build from a clean folder. |
+| Running a second local dev/QA frontend | Give it its own build folder and port: `NEXT_DIST_DIR=.next-qa bun x next dev -p 3100`. Never point experiments at the server on `:4000` if that one uses the production database. |
 
 ## Further documentation
 

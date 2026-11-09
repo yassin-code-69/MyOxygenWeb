@@ -1,0 +1,281 @@
+/*
+ * Back-office chrome (sidebar, header, canvas). Token variables only; only
+ * transform / opacity animate (plus color fades on hover).
+ */
+
+/* ------------------------------------------------------------------------- */
+/* Canvas & header                                                           */
+/* ------------------------------------------------------------------------- */
+
+.main {
+  min-height: 100dvh;
+  background-color: var(--mo-color-surface-muted);
+}
+
+.header {
+  background-color: var(--mo-color-surface);
+  border-bottom: 1px solid var(--mo-color-border);
+}
+
+.searchTrigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, 100%);
+  height: 44px;
+  padding: 0 8px 0 16px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-xl);
+  background-color: var(--mo-color-surface);
+  color: var(--mo-color-text-muted);
+  font-size: var(--mantine-font-size-sm);
+  text-align: left;
+  transition: border-color var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.searchTrigger:hover {
+  border-color: var(--mo-color-border-strong);
+}
+
+.searchText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kbd {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--mo-color-border);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface-muted);
+  color: var(--mo-color-text-secondary);
+  font-family: var(--mo-font-body);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.profileButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--mo-radius-xl);
+}
+
+.profileButton:hover {
+  background-color: var(--mo-color-surface-muted);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Sidebar                                                                   */
+/* ------------------------------------------------------------------------- */
+
+.navbar {
+  background-color: var(--mo-color-surface);
+  border-right: 1px solid var(--mo-color-border);
+}
+
+.brandRow {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 72px;
+  padding: 0 20px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--mo-radius-sm);
+}
+
+.brandName {
+  font-family: var(--mo-font-heading);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--mo-color-primary-6);
+}
+
+.brandTagline {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--mo-color-text-muted);
+  white-space: nowrap;
+}
+
+.nav {
+  padding: 4px 12px 12px;
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--mo-radius-md);
+  background-color: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--mo-color-text-strong);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  text-decoration: none;
+  transition:
+    background-color var(--mo-duration-fast) var(--mo-ease-out),
+    color var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.item:hover {
+  background-color: var(--mo-color-surface-muted);
+  color: var(--mo-color-text);
+}
+
+.item[data-active] {
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-secondary-8);
+  font-weight: 600;
+}
+
+.itemIcon {
+  flex: 0 0 auto;
+  color: var(--mo-color-text-secondary);
+}
+
+.item[data-active] .itemIcon {
+  color: var(--mo-color-secondary-7);
+}
+
+.item[data-group-active] .itemIcon {
+  color: var(--mo-color-secondary-7);
+}
+
+.itemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--mo-color-text-muted);
+  transition: transform var(--mo-duration-base) var(--mo-ease-out);
+}
+
+.item[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
+}
+
+.subList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.subItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 12px 6px 44px;
+  border-radius: var(--mo-radius-md);
+  color: var(--mo-color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-decoration: none;
+  transition:
+    background-color var(--mo-duration-fast) var(--mo-ease-out),
+    color var(--mo-duration-fast) var(--mo-ease-out);
+}
+
+.subItem:hover {
+  background-color: var(--mo-color-surface-muted);
+  color: var(--mo-color-text);
+}
+
+.subItem[data-active] {
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-secondary-8);
+  font-weight: 600;
+}
+
+.subItem[data-disabled] {
+  color: var(--mo-color-text-muted);
+  cursor: not-allowed;
+}
+
+.subItem[data-disabled]:hover {
+  background-color: transparent;
+}
+
+.footer {
+  flex: 0 0 auto;
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--mo-color-border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item,
+  .subItem,
+  .chevron,
+  .searchTrigger {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Command palette (Spotlight)                                               */
+/* ------------------------------------------------------------------------- */
+
+.paletteAction {
+  border-radius: var(--mo-radius-sm);
+}
+
+/* Mint selection with dark text (the default filled pink fails AA with white text). */
+.paletteAction[data-selected] {
+  background-color: var(--mo-color-secondary-0);
+  color: var(--mo-color-text);
+  box-shadow: inset 3px 0 0 var(--mo-color-secondary-7);
+  --action-description-color: var(--mo-color-text-secondary);
+  --action-description-opacity: 1;
+}
+
+.paletteEmpty {
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+  color: var(--mo-color-text-muted);
+  font-size: var(--mantine-font-size-sm);
+  text-align: center;
+}

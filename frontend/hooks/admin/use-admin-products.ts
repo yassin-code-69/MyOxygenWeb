@@ -1,21 +1,30 @@
 "use client";
 
 import { useCallback } from "react";
-import type { KeyedMutator } from "swr";
-import { api, type Page } from "../../lib/api-client";
+import useSWR, { type KeyedMutator } from "swr";
+import { api, type ApiError, type Page } from "../../lib/api-client";
+import { collectPages } from "../../lib/csv";
 import { PERMISSIONS } from "../../types/auth";
-import type {
-  AdminCategoryOption,
-  AdminProductCreatePayload,
-  AdminProductDTO,
-  AdminProductDetailDTO,
-  AdminProductSort,
-  AdminProductStatusFilter,
-  AdminProductUpdatePayload,
-  AdminStockFilter,
+import {
+  ADMIN_PRODUCT_STATUS_FILTERS,
+  type AdminCategoryOption,
+  type AdminProductCreatePayload,
+  type AdminProductDTO,
+  type AdminProductDetailDTO,
+  type AdminProductSort,
+  type AdminProductStatusFilter,
+  type AdminProductUpdatePayload,
+  type AdminStockFilter,
 } from "../../types/admin";
 import type { PaginationMeta } from "../../types/api";
-import { updateItemOptimistically, useAdminPage, useAdminResource, useAdminRevalidate } from "./swr";
+import {
+  cleanParams,
+  updateItemOptimistically,
+  useAdminPage,
+  useAdminResource,
+  useAdminRevalidate,
+  type AdminKey,
+} from "./swr";
 import { useCan } from "./use-permission";
 
 export interface AdminProductFilters {
@@ -67,6 +76,154 @@ export function useProductOptions(search: string, enabled = true) {
     allowed && enabled,
     { revalidateOnFocus: false },
   );
+}
+
+export interface AdminProductKpis {
+  total: number;
+  live: number;
+  awaitingStock: number;
+  inactive: number;
+  /** In stock but at or below the alert level. */
+  lowStock: number;
+  outOfStock: number;
+}
+
+const KPI_QUERIES: ReadonlyArray<readonly [keyof AdminProductKpis, Record<string, string>]> = [
+  ["total", {}],
+  ["live", { status: "active" }],
+  ["awaitingStock", { status: "awaiting_stock" }],
+  ["inactive", { status: "inactive" }],
+  ["lowStock", { stock: "low" }],
+  ["outOfStock", { stock: "out" }],
+];
+
+/**
+ * Catalog counts for the products KPI strip — `meta.total` of `limit=1`
+ * queries, so they use exactly the list's own status / stock filters.
+ */
+export function useProductKpis() {
+  const allowed = useCan(PERMISSIONS.PRODUCTS_READ);
+  const key: AdminKey | null = allowed ? ["/admin/catalog/products#kpis", {}] : null;
+  return useSWR<AdminProductKpis, ApiError, AdminKey | null>(key, async () => {
+    const totals = await Promise.all(
+      KPI_QUERIES.map(async ([name, params]) => {
+        const page = await api.getPage<AdminProductDTO>("/admin/catalog/products", { ...params, page: 1, limit: 1 });
+        return [name, page.meta.total] as const;
+      }),
+    );
+    const kpis: AdminProductKpis = { total: 0, live: 0, awaitingStock: 0, inactive: 0, lowStock: 0, outOfStock: 0 };
+    for (const [name, total] of totals) {
+      kpis[name] = total;
+    }
+    return kpis;
+  });
+}
+
+export type AdminProductStatusCounts = Record<AdminProductStatusFilter, number>;
+
+/** Products per listing status for the status tabs, honouring the other filters. */
+export function useProductStatusCounts(filters: Omit<AdminProductFilters, "page" | "limit" | "status" | "sort">) {
+  const allowed = useCan(PERMISSIONS.PRODUCTS_READ);
+  const params = cleanParams({
+    q: filters.q?.trim() || undefined,
+    category: filters.category ?? undefined,
+    brand: filters.brand?.trim() || undefined,
+    stock: filters.stock === "all" ? undefined : filters.stock,
+  });
+  const key: AdminKey | null = allowed ? ["/admin/catalog/products#status-counts", params] : null;
+  return useSWR<AdminProductStatusCounts, ApiError, AdminKey | null>(
+    key,
+    async ([, query]: AdminKey) => {
+      const totals = await Promise.all(
+        ADMIN_PRODUCT_STATUS_FILTERS.map(async (status) => {
+          const page = await api.getPage<AdminProductDTO>("/admin/catalog/products", {
+            ...query,
+            status: status === "all" ? undefined : status,
+            page: 1,
+            limit: 1,
+          });
+          return [status, page.meta.total] as const;
+        }),
+      );
+      const counts: AdminProductStatusCounts = { all: 0, active: 0, inactive: 0, awaiting_stock: 0 };
+      for (const [status, total] of totals) {
+        counts[status] = total;
+      }
+      return counts;
+    },
+    { keepPreviousData: true },
+  );
+}
+
+/** The bits of a product other tables need (thumbnail, landed cost). */
+export interface AdminProductIndexEntry {
+  id: string;
+  title: string;
+  slug: string;
+  image: string | null;
+  costPrice: number;
+  effectivePrice: number;
+  listingStatus: AdminProductDTO["listingStatus"];
+}
+
+export interface AdminProductIndex {
+  byId: ReadonlyMap<string, AdminProductIndexEntry>;
+  /** True when the catalog is larger than the index cap (some ids may be missing). */
+  truncated: boolean;
+}
+
+const PRODUCT_INDEX_CAP = 1000;
+
+/**
+ * Whole-catalog lookup (id → thumbnail / cost) for tables whose rows only
+ * carry a `productId` (batches, expiry, ledger). Pages of 100 are fetched
+ * sequentially — one request for a typical catalog — and shared by every page
+ * through the SWR cache. Product writes revalidate it (`/admin/catalog/products`
+ * prefix).
+ */
+export function useProductIndex(enabled = true) {
+  const allowed = useCan(PERMISSIONS.PRODUCTS_READ);
+  const key: AdminKey | null = allowed && enabled ? ["/admin/catalog/products#index", {}] : null;
+  return useSWR<AdminProductIndex, ApiError, AdminKey | null>(
+    key,
+    async () => {
+      const result = await collectPages(
+        (page) => api.getPage<AdminProductDTO>("/admin/catalog/products", { page, limit: 100, sort: "title_asc" }),
+        { maxRows: PRODUCT_INDEX_CAP },
+      );
+      const byId = new Map<string, AdminProductIndexEntry>();
+      for (const product of result.items) {
+        byId.set(product.id, {
+          id: product.id,
+          title: product.title,
+          slug: product.slug,
+          image: product.images[0] ?? null,
+          costPrice: product.costPrice,
+          effectivePrice: product.effectivePrice,
+          listingStatus: product.listingStatus,
+        });
+      }
+      return { byId, truncated: result.truncated };
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+}
+
+/** Brand names for the brand filter (`GET /admin/catalog/brands`, PRODUCTS_READ). */
+export function useProductBrandOptions() {
+  const allowed = useCan(PERMISSIONS.PRODUCTS_READ);
+  return useAdminResource<AdminBrandOption[]>("/admin/catalog/brands", {}, allowed, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+}
+
+/** `GET /admin/catalog/brands` item. */
+export interface AdminBrandOption {
+  name: string;
+  productCount: number;
+  activeProductCount: number;
+  unitsSold30d: number;
 }
 
 /** `GET /catalog/categories` (active categories, sorted). */

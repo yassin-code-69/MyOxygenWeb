@@ -6,7 +6,8 @@
  *   GET    /catalog/products                 list + facets (`includeInactive` needs PRODUCTS_READ)
  *   GET    /catalog/products/:idOrSlug
  *   GET    /catalog/flash-sales
- * Admin products (PRODUCTS_READ / PRODUCTS_WRITE):
+ * Admin products (PRODUCTS_READ / PRODUCTS_WRITE) — responses carry `costBreakdown`
+ * (cost_price = its sum; see product.service.ts):
  *   GET    /admin/catalog/products
  *   GET    /admin/catalog/products/:id
  *   POST   /admin/catalog/products
@@ -125,7 +126,7 @@ catalog.get(
   validate("query", adminProductListQuerySchema),
   async (c) => {
     const query = c.req.valid("query");
-    const { items, total } = await catalogService.listAdminProducts(query);
+    const { items, total } = await productService.listAdminProducts(query);
     return paginated(c, items, { page: query.page, limit: query.limit, total });
   },
 );

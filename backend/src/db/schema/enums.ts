@@ -42,3 +42,15 @@ export const stockHistoryReasonEnum = pgEnum("stock_history_reason", [
   "MANUAL_ADJUSTMENT",
   "EXPIRED_SCRAP",
 ]);
+
+/** Operating expenses tracked for the profit report (product cost comes from order_items.unit_cost). */
+export const expenseCategoryEnum = pgEnum("expense_category", [
+  "SHIPPING",
+  "MARKETING",
+  "DELIVERY_SUBSIDY",
+  "PACKAGING",
+  "SALARIES",
+  "RENT",
+  "UTILITIES",
+  "OTHER",
+]);

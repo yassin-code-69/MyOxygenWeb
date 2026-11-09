@@ -255,5 +255,32 @@ bun run test:db:down
 | GET | `/admin/invoices/:id/pdf` | `orders:read` (generates a missing PDF only with `invoice:generate`) |
 | POST | `/admin/invoices/generate/:orderId` | `invoice:generate` |
 
+**Dashboard, reports & finance (administration)**
+
+| Method | Path | Access |
+|---|---|---|
+| GET | `/admin/analytics/activity` | `analytics:read` |
+| GET | `/admin/reports/products` · `/customers` · `/inventory` | `analytics:read` |
+| GET | `/admin/reports/profit` · `/profit/products` · `/profit/products/:id` | SUPER_ADMIN |
+| GET · POST | `/admin/expenses` | SUPER_ADMIN |
+| PATCH · DELETE | `/admin/expenses/:id` | SUPER_ADMIN |
+| GET | `/admin/payments/summary` | `orders:read` |
+| GET | `/admin/search?q=` | any staff role (groups filtered by permission) |
+
+**Management (administration)**
+
+| Method | Path | Access |
+|---|---|---|
+| GET | `/admin/customers` · `/admin/customers/:id` | `orders:read` |
+| PATCH | `/admin/customers/:id` | `staff:manage` |
+| GET · POST | `/admin/catalog/categories` | `products:read` · `products:write` |
+| PATCH · DELETE | `/admin/catalog/categories/:id` | `products:write` |
+| GET · PATCH | `/admin/catalog/brands` | `products:read` · `products:write` |
+| GET · POST | `/admin/staff` | `staff:manage` |
+| PATCH | `/admin/staff/:id` | `staff:manage` |
+| GET | `/admin/roles` | `staff:manage` |
+| GET | `/admin/system/status` | `staff:manage` |
+| GET | `/admin/delivery/summary` | `orders:read` |
+
 **Non-production only** (RBAC probes for the auth test-suite, not registered when `NODE_ENV=production`): `GET /admin/inventory/test` (`stock:adjust`), `POST /admin/orders/refund/test` (`refunds:approve`).
 <!-- ENDPOINTS:END -->

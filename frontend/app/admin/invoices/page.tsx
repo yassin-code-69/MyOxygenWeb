@@ -3,8 +3,8 @@
 import { useState } from "react";
 import {
   ActionIcon,
-  Anchor,
   Box,
+  Button,
   Group,
   Menu,
   Select,
@@ -12,7 +12,9 @@ import {
   Stack,
   Text,
   TextInput,
+  ThemeIcon,
   Tooltip,
+  UnstyledButton,
   VisuallyHidden,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
@@ -22,24 +24,32 @@ import {
   IconCreditCard,
   IconDotsVertical,
   IconEye,
+  IconFileInvoice,
   IconFileTypePdf,
   IconReceipt,
   IconReceipt2,
   IconRefresh,
   IconSearch,
 } from "@tabler/icons-react";
-import { Price } from "../../../components/Price";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { ConfirmModal } from "../../../components/admin/ConfirmModal";
 import { DataTable, type DataTableColumn } from "../../../components/admin/DataTable";
-import { DateRangeFilter, isCompleteRange, type DateRange } from "../../../components/admin/DateRangeFilter";
-import { FilterBar } from "../../../components/admin/FilterBar";
-import { KpiCard } from "../../../components/admin/KpiCard";
-import { PageHeader } from "../../../components/admin/PageHeader";
 import { RequirePermission } from "../../../components/admin/RequirePermission";
-import { formatCount, formatDhakaDateTime, formatMoney, paymentMethodLabel } from "../../../components/admin/format";
+import {
+  formatCount,
+  formatDhakaDate,
+  formatDhakaDateTime,
+  formatDhakaTime,
+  formatMoney,
+  paymentMethodLabel,
+  pluralize,
+} from "../../../components/admin/format";
 import { InvoiceDetailDrawer } from "../../../components/admin/invoices/InvoiceDetailDrawer";
+import { KpiCard, PageHeader, type DateRangeValue } from "../../../components/admin/kit";
+import { ListCard } from "../../../components/admin/products/ListCard";
+import { OptionalDateRange } from "../../../components/admin/products/OptionalDateRange";
 import { useInvoiceMutations, useInvoices, useInvoiceSummary } from "../../../hooks/admin/use-invoices";
+import { usePaging, useUrlParams } from "../../../hooks/admin/use-ops-url-state";
 import { useCan } from "../../../hooks/admin/use-permission";
 import { api, getErrorMessage } from "../../../lib/api-client";
 import { PERMISSIONS } from "../../../types/auth";
@@ -52,7 +62,7 @@ const PAYMENT_STATUS_OPTIONS = [
 ];
 
 const PAYMENT_METHOD_OPTIONS = [
-  { value: "ALL", label: "Any method" },
+  { value: "ALL", label: "Any payment method" },
   ...ADMIN_PAYMENT_METHODS.map((value) => ({ value, label: paymentMethodLabel(value) })),
 ];
 
@@ -65,44 +75,42 @@ export default function AdminInvoicesPage() {
 }
 
 function InvoicesView() {
+  const { searchParams, setParams } = useUrlParams();
   const canGenerate = useCan(PERMISSIONS.INVOICE_GENERATE);
-  const [search, setSearch] = useState("");
+
+  // Deep links: ?invoiceId= (drawer), ?q= (search seed).
+  const detailId = searchParams.get("invoiceId");
+  const urlQuery = searchParams.get("q") ?? "";
+  const [searchDraft, setSearchDraft] = useState({ source: urlQuery, text: urlQuery });
+  const search = searchDraft.source === urlQuery ? searchDraft.text : urlQuery;
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "ALL">("ALL");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "ALL">("ALL");
-  const [range, setRange] = useState<DateRange>([null, null]);
-  const [appliedRange, setAppliedRange] = useState<DateRange>([null, null]);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [range, setRange] = useState<DateRangeValue | null>(null);
   const [openingPdf, setOpeningPdf] = useState<string | null>(null);
   const [regenerateTarget, setRegenerateTarget] = useState<AdminInvoiceDTO | null>(null);
   const [regenerating, setRegenerating] = useState(false);
 
-  const list = useInvoices({
-    page,
-    limit,
-    q: debouncedSearch,
-    paymentStatus,
-    paymentMethod,
-    from: appliedRange[0],
-    to: appliedRange[1],
-  });
+  const filters = { q: debouncedSearch, paymentStatus, paymentMethod, from: range?.from ?? null, to: range?.to ?? null };
+  const paging = usePaging(JSON.stringify(filters));
+  const list = useInvoices({ page: paging.page, limit: paging.limit, ...filters });
   const summary = useInvoiceSummary();
   const { regenerateInvoice } = useInvoiceMutations();
 
-  const activeFilters =
-    (search.trim() ? 1 : 0) + (paymentStatus !== "ALL" ? 1 : 0) + (paymentMethod !== "ALL" ? 1 : 0) + (appliedRange[0] ? 1 : 0);
+  const activeFilters = (search.trim() ? 1 : 0) + (paymentStatus !== "ALL" ? 1 : 0) + (paymentMethod !== "ALL" ? 1 : 0) + (range ? 1 : 0);
   const clearFilters = () => {
-    setSearch("");
+    setSearchDraft({ source: urlQuery, text: "" });
     setPaymentStatus("ALL");
     setPaymentMethod("ALL");
-    setRange([null, null]);
-    setAppliedRange([null, null]);
-    setPage(1);
+    setRange(null);
+    if (urlQuery) {
+      setParams({ q: null });
+    }
   };
 
-  const openPdf = async (invoice: AdminInvoiceDTO) => {
+  const openDetail = (invoice: AdminInvoiceDTO) => setParams({ invoiceId: invoice.id });
+
+  const openPdf = async (invoice: Pick<AdminInvoiceDTO, "id" | "invoiceNumber">) => {
     setOpeningPdf(invoice.id);
     try {
       await api.open(`/admin/invoices/${invoice.id}/pdf`);
@@ -133,39 +141,36 @@ function InvoicesView() {
     {
       key: "invoice",
       header: "Invoice",
-      width: 220,
+      width: 230,
       cell: (invoice) => (
-        <Box>
-          <Anchor component="button" type="button" size="sm" fw={700} ff="var(--mo-font-monospace)" onClick={() => setDetailId(invoice.id)}>
-            {invoice.invoiceNumber}
-          </Anchor>
-          <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-            {formatDhakaDateTime(invoice.createdAt)}
-          </Text>
-        </Box>
-      ),
-    },
-    {
-      key: "order",
-      header: "Order",
-      width: 200,
-      visibleFrom: "lg",
-      cell: (invoice) => (
-        <Text size="sm" ff="var(--mo-font-monospace)" c={invoice.orderNumber ? undefined : "dimmed"}>
-          {invoice.orderNumber ?? "—"}
-        </Text>
+        <Group gap="sm" wrap="nowrap" miw={190}>
+          <ThemeIcon size={36} radius="xl" variant="light" color="secondaryGreen" aria-hidden>
+            <IconFileInvoice size={18} />
+          </ThemeIcon>
+          <Box style={{ minWidth: 0 }}>
+            <UnstyledButton onClick={() => openDetail(invoice)} aria-label={`Open invoice ${invoice.invoiceNumber}`}>
+              <Text size="sm" fw={700} ff="var(--mo-font-monospace)" c="var(--mo-color-text)" style={{ whiteSpace: "nowrap" }}>
+                {invoice.invoiceNumber}
+              </Text>
+            </UnstyledButton>
+            <Text size="xs" c="var(--mo-color-text-muted)" ff="var(--mo-font-monospace)" style={{ whiteSpace: "nowrap" }}>
+              {invoice.orderNumber ?? "Order unavailable"}
+            </Text>
+          </Box>
+        </Group>
       ),
     },
     {
       key: "customer",
       header: "Customer",
+      width: 200,
       skeletonWidth: "75%",
       cell: (invoice) => (
         <Box style={{ minWidth: 0 }}>
-          <Text size="sm" fw={500} lineClamp={1}>
+          <Text size="sm" fw={600} lineClamp={1} c="var(--mo-color-text)">
             {invoice.customerName}
           </Text>
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="var(--mo-color-text-muted)">
             {invoice.customerPhone}
           </Text>
         </Box>
@@ -176,7 +181,6 @@ function InvoicesView() {
       header: "Items",
       align: "right",
       width: 70,
-      visibleFrom: "md",
       cell: (invoice) => (
         <Text size="sm" className="mo-tabular-nums">
           {formatCount(invoice.itemCount)}
@@ -187,34 +191,63 @@ function InvoicesView() {
       key: "total",
       header: "Total",
       align: "right",
-      width: 110,
-      cell: (invoice) => <Price value={invoice.totalAmount} size="sm" />,
+      width: 120,
+      cell: (invoice) => (
+        <Text size="sm" fw={700} className="mo-tabular-nums" c="var(--mo-color-text)" style={{ whiteSpace: "nowrap" }}>
+          {formatMoney(invoice.totalAmount)}
+        </Text>
+      ),
     },
     {
       key: "payment",
       header: "Payment",
-      width: 160,
+      width: 150,
       cell: (invoice) => (
-        <Stack gap={2} align="flex-start">
-          <StatusBadge status={invoice.paymentStatus} size="xs" />
-          <Text size="xs" c="dimmed">
+        <Stack gap={4} align="flex-start">
+          <StatusBadge status={invoice.paymentStatus} size="sm" />
+          <Text size="xs" c="var(--mo-color-text-muted)" style={{ whiteSpace: "nowrap" }}>
             {paymentMethodLabel(invoice.paymentMethod)}
           </Text>
         </Stack>
       ),
     },
     {
+      key: "issued",
+      header: "Issued",
+      width: 120,
+      cell: (invoice) => (
+        <Text
+          component="time"
+          dateTime={invoice.createdAt}
+          title={formatDhakaDateTime(invoice.createdAt)}
+          size="xs"
+          lh={1.5}
+          c="var(--mo-color-text-secondary)"
+          display="block"
+          style={{ whiteSpace: "nowrap" }}
+        >
+          {formatDhakaDate(invoice.createdAt)}
+          <br />
+          {formatDhakaTime(invoice.createdAt)}
+        </Text>
+      ),
+    },
+    {
       key: "actions",
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       align: "right",
-      width: 100,
-      skeletonWidth: 48,
+      width: 150,
+      skeletonWidth: 90,
       cell: (invoice) => (
-        <Group gap={4} justify="flex-end" wrap="nowrap">
+        <Group gap={6} justify="flex-end" wrap="nowrap">
+          <Button size="compact-sm" radius="xl" variant="light" color="info" onClick={() => openDetail(invoice)} aria-label={`View invoice ${invoice.invoiceNumber}`}>
+            View
+          </Button>
           <Tooltip label={invoice.hasPdf || canGenerate ? "Open PDF" : "PDF not generated yet"}>
             <ActionIcon
               variant="subtle"
               color="primaryPink"
+              radius="xl"
               onClick={() => void openPdf(invoice)}
               loading={openingPdf === invoice.id}
               disabled={!invoice.hasPdf && !canGenerate}
@@ -225,12 +258,12 @@ function InvoicesView() {
           </Tooltip>
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
-              <ActionIcon variant="subtle" color="gray" aria-label={`More actions for ${invoice.invoiceNumber}`}>
+              <ActionIcon variant="subtle" color="gray" radius="xl" aria-label={`More actions for ${invoice.invoiceNumber}`}>
                 <IconDotsVertical size={18} aria-hidden />
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item leftSection={<IconEye size={16} aria-hidden />} onClick={() => setDetailId(invoice.id)}>
+              <Menu.Item leftSection={<IconEye size={16} aria-hidden />} onClick={() => openDetail(invoice)}>
                 View details
               </Menu.Item>
               {canGenerate ? (
@@ -250,104 +283,134 @@ function InvoicesView() {
   const summaryLoading = summary.isLoading && !totals;
 
   return (
-    <Stack gap={0}>
+    <Stack gap="lg">
       <PageHeader
+        mb={0}
+        icon={<IconFileInvoice size={20} />}
         title="Invoices"
-        description="One invoice per order, with the batch each item came from. PDFs open in a new tab. Times are in Dhaka."
+        subtitle="One invoice per order, listing the batch each item came from. PDFs open in a new tab. Times are in Dhaka."
       />
 
-      <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md" mb="lg">
-        <KpiCard label="Invoices" value={totals ? formatCount(totals.totalInvoices) : "—"} icon={<IconReceipt size={18} />} color="primaryPink" hint="All time" loading={summaryLoading} />
-        <KpiCard label="Total billed" value={totals ? formatMoney(totals.totalBilledAmount) : "—"} icon={<IconReceipt2 size={18} />} color="accentPurple" hint="All time, incl. delivery" loading={summaryLoading} />
-        <KpiCard label="Cash on delivery" value={totals ? formatCount(totals.codCount) : "—"} icon={<IconCash size={18} />} color="warning" hint="Invoices" loading={summaryLoading} />
-        <KpiCard label="Online payment" value={totals ? formatCount(totals.onlineCount) : "—"} icon={<IconCreditCard size={18} />} color="info" hint="Invoices" loading={summaryLoading} />
-      </SimpleGrid>
+      {summary.error && !totals ? null : (
+        <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
+          <KpiCard
+            tone="mint"
+            icon={<IconReceipt size={24} stroke={1.8} />}
+            label="Invoices"
+            value={totals ? formatCount(totals.totalInvoices) : undefined}
+            hint="All time"
+            loading={summaryLoading}
+          />
+          <KpiCard
+            tone="lavender"
+            icon={<IconReceipt2 size={24} stroke={1.8} />}
+            label="Total billed"
+            value={totals ? formatMoney(Math.round(totals.totalBilledAmount)) : undefined}
+            hint="All time, incl. delivery"
+            loading={summaryLoading}
+          />
+          <KpiCard
+            tone="peach"
+            icon={<IconCash size={24} stroke={1.8} />}
+            label="Cash on delivery"
+            value={totals ? formatCount(totals.codCount) : undefined}
+            hint="Invoices"
+            loading={summaryLoading}
+          />
+          <KpiCard
+            tone="sky"
+            icon={<IconCreditCard size={24} stroke={1.8} />}
+            label="Online payment"
+            value={totals ? formatCount(totals.onlineCount) : undefined}
+            hint="Invoices"
+            loading={summaryLoading}
+          />
+        </SimpleGrid>
+      )}
 
-      <FilterBar activeCount={activeFilters} onReset={clearFilters}>
-        <TextInput
-          variant="search"
-          label="Search"
-          placeholder="Invoice or order number, name, phone"
-          leftSection={<IconSearch size={16} aria-hidden />}
-          value={search}
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            setPage(1);
-          }}
-          w={{ base: "100%", sm: 300 }}
-        />
-        <Select
-          label="Payment status"
-          data={PAYMENT_STATUS_OPTIONS}
-          value={paymentStatus}
-          allowDeselect={false}
-          onChange={(value) => {
-            setPaymentStatus(ADMIN_PAYMENT_STATUSES.find((item) => item === value) ?? "ALL");
-            setPage(1);
-          }}
-          w={{ base: "100%", sm: 190 }}
-          radius="xl"
-        />
-        <Select
-          label="Method"
-          data={PAYMENT_METHOD_OPTIONS}
-          value={paymentMethod}
-          allowDeselect={false}
-          onChange={(value) => {
-            setPaymentMethod(ADMIN_PAYMENT_METHODS.find((item) => item === value) ?? "ALL");
-            setPage(1);
-          }}
-          w={{ base: "100%", sm: 180 }}
-          radius="xl"
-        />
-        <DateRangeFilter
-          label="Issued"
-          value={range}
-          onChange={(next) => {
-            setRange(next);
-            if (isCompleteRange(next)) {
-              setAppliedRange(next);
-              setPage(1);
-            }
-          }}
-        />
-      </FilterBar>
-
-      <DataTable
-        label="Invoices"
-        columns={columns}
-        rows={list.data?.items}
-        getRowKey={(invoice) => invoice.id}
-        loading={list.isLoading}
-        refreshing={list.isLoading && Boolean(list.data)}
-        error={list.error}
-        onRetry={() => void list.mutate()}
-        permission={PERMISSIONS.ORDERS_READ}
-        minWidth={900}
-        emptyIcon={<IconReceipt stroke={1.6} />}
-        emptyTitle={activeFilters > 0 ? "No invoices match these filters" : "No invoices yet"}
-        emptyDescription={activeFilters > 0 ? "Try different filters or clear them." : "An invoice is created for every order."}
-        pagination={
-          meta
-            ? {
-                page: meta.page,
-                totalPages: meta.totalPages,
-                total: meta.total,
-                limit: meta.limit,
-                onPageChange: setPage,
-                onLimitChange: (value) => {
-                  setLimit(value);
-                  setPage(1);
-                },
-                itemLabel: "invoices",
-              }
-            : undefined
+      <ListCard
+        title="All invoices"
+        icon={<IconReceipt size={18} color="var(--mo-color-secondary-8)" aria-hidden />}
+        subtitle={meta ? pluralize(meta.total, activeFilters > 0 ? "matching invoice" : "invoice") : "Loading invoices…"}
+        filters={
+          <>
+            <TextInput
+              aria-label="Search invoices"
+              placeholder="Invoice or order no., name, phone"
+              leftSection={<IconSearch size={16} aria-hidden />}
+              radius="xl"
+              value={search}
+              onChange={(event) => setSearchDraft({ source: urlQuery, text: event.currentTarget.value })}
+              w={{ base: "100%", sm: 300 }}
+            />
+            <OptionalDateRange label="Issued" value={range} onChange={setRange} />
+            <Select
+              aria-label="Payment status"
+              data={PAYMENT_STATUS_OPTIONS}
+              value={paymentStatus}
+              allowDeselect={false}
+              onChange={(value) => setPaymentStatus(ADMIN_PAYMENT_STATUSES.find((item) => item === value) ?? "ALL")}
+              w={{ base: "100%", xs: 190 }}
+              radius="xl"
+            />
+            <Select
+              aria-label="Payment method"
+              data={PAYMENT_METHOD_OPTIONS}
+              value={paymentMethod}
+              allowDeselect={false}
+              onChange={(value) => setPaymentMethod(ADMIN_PAYMENT_METHODS.find((item) => item === value) ?? "ALL")}
+              w={{ base: "100%", xs: 200 }}
+              radius="xl"
+            />
+          </>
         }
-      />
+        activeFilterCount={activeFilters}
+        onResetFilters={clearFilters}
+      >
+        <DataTable
+          label="Invoices"
+          columns={columns}
+          rows={list.data?.items}
+          getRowKey={(invoice) => invoice.id}
+          loading={list.isLoading}
+          refreshing={list.isLoading && Boolean(list.data)}
+          error={list.error}
+          onRetry={() => void list.mutate()}
+          permission={PERMISSIONS.ORDERS_READ}
+          minWidth={1040}
+          emptyIcon={<IconReceipt stroke={1.6} />}
+          emptyTitle={activeFilters > 0 ? "No invoices match these filters" : "No invoices yet"}
+          emptyDescription={
+            activeFilters > 0
+              ? "Try different filters or clear them."
+              : "Invoices are generated in the background after checkout and appear here once ready."
+          }
+          emptyAction={
+            activeFilters > 0 ? (
+              <Button variant="light" radius="xl" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null
+          }
+          pagination={
+            meta
+              ? {
+                  page: meta.page,
+                  totalPages: meta.totalPages,
+                  total: meta.total,
+                  limit: meta.limit,
+                  onPageChange: paging.setPage,
+                  onLimitChange: paging.setLimit,
+                  itemLabel: "invoices",
+                }
+              : undefined
+          }
+        />
+      </ListCard>
 
       <InvoiceDetailDrawer
         invoiceId={detailId}
-        onClose={() => setDetailId(null)}
+        onClose={() => setParams({ invoiceId: null })}
         onOpenPdf={(invoice) => void openPdf(invoice)}
         onRegenerate={canGenerate ? setRegenerateTarget : undefined}
         openingPdf={openingPdf !== null && openingPdf === detailId}

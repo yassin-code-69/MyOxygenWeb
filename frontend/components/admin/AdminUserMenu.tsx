@@ -1,39 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { Avatar, Badge, Box, Group, Menu, Text, UnstyledButton } from "@mantine/core";
-import { IconBuildingStore, IconChevronDown, IconLogout } from "@tabler/icons-react";
+import { Avatar, Badge, Box, Menu, Text, UnstyledButton } from "@mantine/core";
+import { IconBuildingStore, IconChevronDown, IconLogout, IconUserCircle } from "@tabler/icons-react";
 import type { AuthUser } from "../../lib/auth-store";
 import { initialsOf, roleLabel } from "./format";
+import classes from "./AdminShell.module.css";
 
 export interface AdminUserMenuProps {
   user: AuthUser;
   onLogout: () => void;
 }
 
-/** Signed-in staff member (real name, initials and role) with logout. */
+/** Signed-in staff member (initials avatar, real name, role) with account links and logout. */
 export function AdminUserMenu({ user, onLogout }: AdminUserMenuProps) {
   return (
-    <Menu position="bottom-end" width={260} withinPortal>
+    <Menu position="bottom-end" width={260} withinPortal offset={8}>
       <Menu.Target>
-        <UnstyledButton
-          aria-label={`Account menu for ${user.fullName}`}
-          style={{ borderRadius: "var(--mo-radius-xl)", padding: "4px 8px 4px 4px" }}
-        >
-          <Group gap="xs" wrap="nowrap">
-            <Avatar color="primaryPink" radius="xl" size={34}>
-              {initialsOf(user.fullName)}
-            </Avatar>
-            <Box visibleFrom="sm" style={{ minWidth: 0 }}>
-              <Text size="sm" fw={600} lh={1.2} truncate maw={160}>
-                {user.fullName}
-              </Text>
-              <Text size="xs" c="dimmed" lh={1.2}>
-                {roleLabel(user.role)}
-              </Text>
-            </Box>
-            <IconChevronDown size={14} aria-hidden />
-          </Group>
+        <UnstyledButton className={classes.profileButton} aria-label={`Account menu for ${user.fullName}`}>
+          <Avatar
+            radius="xl"
+            size={38}
+            styles={{
+              placeholder: {
+                backgroundColor: "var(--mo-color-primary-1)",
+                color: "var(--mo-color-primary-9)",
+                fontWeight: 700,
+              },
+            }}
+          >
+            {initialsOf(user.fullName)}
+          </Avatar>
+          <Box visibleFrom="sm" style={{ minWidth: 0 }}>
+            <Text size="sm" fw={600} lh={1.25} truncate maw={170} c="var(--mo-color-text)">
+              {user.fullName}
+            </Text>
+            <Text size="xs" c="var(--mo-color-text-muted)" lh={1.3}>
+              {roleLabel(user.role)}
+            </Text>
+          </Box>
+          <IconChevronDown size={16} color="var(--mo-color-text-muted)" aria-hidden />
         </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown>
@@ -46,14 +52,18 @@ export function AdminUserMenu({ user, onLogout }: AdminUserMenuProps) {
               {user.email}
             </Text>
           ) : null}
-          <Badge mt={6} size="sm" variant="light" color="accentPurple">
+          <Badge mt={6} size="sm" variant="light" color="accentPurple" tt="none">
             {roleLabel(user.role)}
           </Badge>
         </Box>
         <Menu.Divider />
+        <Menu.Item component={Link} href="/account" leftSection={<IconUserCircle size={16} aria-hidden />}>
+          My account
+        </Menu.Item>
         <Menu.Item component={Link} href="/" leftSection={<IconBuildingStore size={16} aria-hidden />}>
           View storefront
         </Menu.Item>
+        <Menu.Divider />
         <Menu.Item color="danger" leftSection={<IconLogout size={16} aria-hidden />} onClick={onLogout}>
           Log out
         </Menu.Item>

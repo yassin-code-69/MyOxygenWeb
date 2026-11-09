@@ -1,16 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import {
   ActionIcon,
-  Badge,
   Box,
   Button,
-  Group,
   Menu,
-  SegmentedControl,
+  SimpleGrid,
   Stack,
   Switch,
   Text,
@@ -20,30 +17,42 @@ import {
 import { useDebouncedValue } from "@mantine/hooks";
 import {
   IconAdjustments,
+  IconAlertTriangle,
+  IconBoxSeam,
   IconCalendarTime,
+  IconCircleCheck,
+  IconCircleX,
   IconDotsVertical,
+  IconEye,
   IconFileSpreadsheet,
+  IconHourglassHigh,
   IconPackageImport,
   IconSearch,
+  IconStack2,
   IconTrash,
 } from "@tabler/icons-react";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { AdjustStockModal } from "../../../components/admin/batches/AdjustStockModal";
+import { BatchProductCell, DaysLeftBadge } from "../../../components/admin/batches/batch-ui";
 import { ImportBatchModal } from "../../../components/admin/batches/ImportBatchModal";
 import { DataTable, type DataTableColumn, type DataTableRowStyle } from "../../../components/admin/DataTable";
-import { FilterBar } from "../../../components/admin/FilterBar";
 import { MeterBar } from "../../../components/admin/MeterBar";
-import { PageHeader } from "../../../components/admin/PageHeader";
 import { ProductPicker, type ProductOption } from "../../../components/admin/ProductPicker";
 import { RequirePermission } from "../../../components/admin/RequirePermission";
-import { formatCalendarDate, formatCount } from "../../../components/admin/format";
-import { useAdminProduct } from "../../../hooks/admin/use-admin-products";
-import { useBatches } from "../../../hooks/admin/use-batches";
+import { formatCalendarDate, formatCount, pluralize } from "../../../components/admin/format";
+import { KpiCard, PageHeader } from "../../../components/admin/kit";
+import { CountTabs, type CountTab } from "../../../components/admin/products/CountTabs";
+import { HiddenLabelField, ListCard } from "../../../components/admin/products/ListCard";
+import { useAdminProduct, useProductIndex } from "../../../hooks/admin/use-admin-products";
+import { useBatchKpis, useBatches } from "../../../hooks/admin/use-batches";
+import { pickParam, usePaging, useUrlParams } from "../../../hooks/admin/use-ops-url-state";
 import { useCan } from "../../../hooks/admin/use-permission";
 import { PERMISSIONS } from "../../../types/auth";
 import { BATCH_HEALTH_STATUSES, type AdminBatchDTO, type BatchHealthStatus } from "../../../types/admin";
 
 type StatusFilter = BatchHealthStatus | "ALL";
+
+const STATUS_FILTERS = ["ALL", ...BATCH_HEALTH_STATUSES] as const satisfies readonly StatusFilter[];
 
 const ROW_STYLES: Record<BatchHealthStatus, DataTableRowStyle | undefined> = {
   EXPIRED: { background: "var(--mantine-color-danger-0)", accent: "var(--mantine-color-danger-6)" },
@@ -58,31 +67,6 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   HEALTHY: "Healthy",
 };
 
-const STATUS_COLORS: Record<StatusFilter, string> = {
-  ALL: "gray",
-  EXPIRED: "danger",
-  EXPIRING_SOON: "warning",
-  HEALTHY: "success",
-};
-
-function parseStatus(value: string | null): StatusFilter {
-  return BATCH_HEALTH_STATUSES.find((status) => status === value) ?? "ALL";
-}
-
-function expiryText(batch: AdminBatchDTO): string {
-  const days = batch.daysUntilExpiry;
-  if (days > 1) {
-    return `in ${formatCount(days)} days`;
-  }
-  if (days === 1) {
-    return "tomorrow";
-  }
-  if (days === 0) {
-    return "today";
-  }
-  return `${formatCount(Math.abs(days))} ${Math.abs(days) === 1 ? "day" : "days"} ago`;
-}
-
 export default function AdminBatchesPage() {
   return (
     <RequirePermission permission={PERMISSIONS.BATCHES_MANAGE}>
@@ -91,107 +75,101 @@ export default function AdminBatchesPage() {
   );
 }
 
-function BatchesView() {
-  const searchParams = useSearchParams();
-  const canAdjust = useCan(PERMISSIONS.STOCK_ADJUST);
-  const importProductId = searchParams.get("import");
+function toOption(product: { id: string; title: string; sku: string; listingStatus: ProductOption["listingStatus"] } | undefined): ProductOption | null {
+  return product ? { id: product.id, title: product.title, sku: product.sku, listingStatus: product.listingStatus } : null;
+}
 
-  const [status, setStatus] = useState<StatusFilter>(() => parseStatus(searchParams.get("status")));
+function BatchesView() {
+  const { searchParams, setParams } = useUrlParams();
+  const canAdjust = useCan(PERMISSIONS.STOCK_ADJUST);
+  const canProducts = useCan(PERMISSIONS.PRODUCTS_READ);
+
+  // Deep links: ?status= (tab), ?productId= (filter), ?import=<productId> (import modal).
+  const status = pickParam<StatusFilter>(searchParams.get("status"), STATUS_FILTERS, "ALL");
+  const productId = searchParams.get("productId");
+  const importParam = searchParams.get("import");
+  const [importOpened, setImportOpened] = useState(false);
+  const importOpen = importOpened || importParam !== null;
+
   const [search, setSearch] = useState("");
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const [productId, setProductId] = useState<string | null>(() => searchParams.get("productId"));
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [importOpened, setImportOpened] = useState(() => Boolean(importProductId));
   const [adjusting, setAdjusting] = useState<AdminBatchDTO | null>(null);
 
-  // Labels for products preselected through the URL (?import= / ?productId=).
-  const { data: importProduct } = useAdminProduct(importProductId);
-  const { data: filterProduct } = useAdminProduct(searchParams.get("productId"));
-  const importInitial: ProductOption | null = importProduct
-    ? { id: importProduct.id, title: importProduct.title, sku: importProduct.sku, listingStatus: importProduct.listingStatus }
-    : null;
-  const filterInitial: ProductOption | null = filterProduct
-    ? { id: filterProduct.id, title: filterProduct.title, sku: filterProduct.sku, listingStatus: filterProduct.listingStatus }
-    : null;
+  // Labels for products preselected through the URL.
+  const { data: importProduct } = useAdminProduct(importParam);
+  const { data: filterProduct } = useAdminProduct(productId);
+  const { data: productIndex } = useProductIndex();
 
+  const paging = usePaging(JSON.stringify({ status, q: debouncedSearch, productId, inStockOnly }));
   const list = useBatches({
-    page,
-    limit,
+    page: paging.page,
+    limit: paging.limit,
     status: status === "ALL" ? null : status,
     q: debouncedSearch,
     productId,
     inStockOnly,
   });
+  const kpis = useBatchKpis();
   const summary = list.data?.meta.summary;
-  const summaryTotal = summary ? summary.EXPIRED + summary.EXPIRING_SOON + summary.HEALTHY : null;
 
   const activeFilters = (search.trim() ? 1 : 0) + (productId ? 1 : 0) + (inStockOnly ? 1 : 0);
+  const filtered = status !== "ALL" || activeFilters > 0;
   const clearFilters = () => {
     setSearch("");
-    setProductId(null);
     setInStockOnly(false);
-    setPage(1);
+    setParams({ productId: null });
   };
 
-  const countFor = (key: StatusFilter): number | null => {
-    if (!summary) {
-      return null;
+  const closeImport = () => {
+    setImportOpened(false);
+    if (importParam !== null) {
+      setParams({ import: null });
     }
-    return key === "ALL" ? summaryTotal : summary[key];
   };
+
+  const tabs: CountTab<StatusFilter>[] = STATUS_FILTERS.map((value) => ({
+    value,
+    label: STATUS_LABELS[value],
+    count: summary ? (value === "ALL" ? summary.EXPIRED + summary.EXPIRING_SOON + summary.HEALTHY : summary[value]) : null,
+  }));
 
   const columns: DataTableColumn<AdminBatchDTO>[] = [
     {
       key: "product",
       header: "Product",
+      width: 280,
       skeletonWidth: "80%",
       cell: (batch) => (
-        <Box style={{ minWidth: 0 }}>
-          <Text size="sm" fw={600} lineClamp={1}>
-            {batch.productTitle}
-          </Text>
-          <Text size="xs" c="dimmed" ff="var(--mo-font-monospace)">
-            {batch.sku}
-          </Text>
-        </Box>
+        <BatchProductCell productId={batch.productId} title={batch.productTitle} sku={batch.sku} index={productIndex} />
       ),
     },
     {
       key: "batch",
       header: "Batch",
-      width: 180,
+      width: 170,
       cell: (batch) => (
-        <Text size="sm" fw={600} ff="var(--mo-font-monospace)">
-          {batch.batchNumber}
-        </Text>
-      ),
-    },
-    {
-      key: "manufactured",
-      header: "Made",
-      width: 120,
-      visibleFrom: "lg",
-      cell: (batch) => (
-        <Text size="sm" c="dimmed">
-          {batch.manufactureDate ? formatCalendarDate(batch.manufactureDate) : "—"}
-        </Text>
+        <Box>
+          <Text size="sm" fw={600} ff="var(--mo-font-monospace)" style={{ whiteSpace: "nowrap" }}>
+            {batch.batchNumber}
+          </Text>
+          <Text size="xs" c="var(--mo-color-text-muted)" style={{ whiteSpace: "nowrap" }}>
+            Made {batch.manufactureDate ? formatCalendarDate(batch.manufactureDate) : "—"}
+          </Text>
+        </Box>
       ),
     },
     {
       key: "expiry",
       header: "Expiry",
-      width: 150,
+      width: 170,
       cell: (batch) => (
-        <Box>
-          <Text size="sm" fw={batch.healthStatus === "HEALTHY" ? 400 : 600}>
+        <Stack gap={4} align="flex-start">
+          <Text size="sm" fw={batch.healthStatus === "HEALTHY" ? 500 : 700} c="var(--mo-color-text)" style={{ whiteSpace: "nowrap" }}>
             {formatCalendarDate(batch.expiryDate)}
           </Text>
-          <Text size="xs" c={batch.healthStatus === "EXPIRED" ? "var(--mo-color-text-danger)" : "dimmed"}>
-            {expiryText(batch)}
-          </Text>
-        </Box>
+          <DaysLeftBadge days={batch.daysUntilExpiry} />
+        </Stack>
       ),
     },
     {
@@ -200,10 +178,10 @@ function BatchesView() {
       align: "right",
       width: 150,
       cell: (batch) => (
-        <Stack gap={4} align="stretch">
-          <Text size="sm" ta="right" className="mo-tabular-nums">
+        <Stack gap={6} align="stretch">
+          <Text size="sm" ta="right" className="mo-tabular-nums" style={{ whiteSpace: "nowrap" }}>
             <strong>{formatCount(batch.availableQuantity)}</strong>
-            <Text component="span" size="xs" c="dimmed">
+            <Text component="span" size="xs" c="var(--mo-color-text-muted)">
               {" "}
               / {formatCount(batch.initialQuantity)}
             </Text>
@@ -211,7 +189,7 @@ function BatchesView() {
           <MeterBar
             ratio={batch.initialQuantity > 0 ? batch.availableQuantity / batch.initialQuantity : 0}
             color={batch.healthStatus === "HEALTHY" ? "secondaryGreen" : batch.healthStatus === "EXPIRED" ? "danger" : "warning"}
-            height={4}
+            height={5}
           />
         </Stack>
       ),
@@ -226,154 +204,189 @@ function BatchesView() {
       key: "actions",
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       align: "right",
-      width: 60,
+      width: 70,
       skeletonWidth: 24,
-      cell: (batch) =>
-        canAdjust ? (
-          <Menu position="bottom-end" withinPortal>
-            <Menu.Target>
-              <ActionIcon variant="subtle" color="gray" aria-label={`Actions for batch ${batch.batchNumber}`}>
-                <IconDotsVertical size={18} aria-hidden />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
+      cell: (batch) => (
+        <Menu position="bottom-end" withinPortal width={230}>
+          <Menu.Target>
+            <ActionIcon variant="subtle" color="gray" radius="xl" aria-label={`Actions for batch ${batch.batchNumber}`}>
+              <IconDotsVertical size={18} aria-hidden />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {canAdjust && batch.healthStatus === "EXPIRED" && batch.availableQuantity > 0 ? (
+              <Menu.Item color="danger" leftSection={<IconTrash size={16} aria-hidden />} onClick={() => setAdjusting(batch)}>
+                Write off expired stock
+              </Menu.Item>
+            ) : null}
+            {canAdjust ? (
               <Menu.Item leftSection={<IconAdjustments size={16} aria-hidden />} onClick={() => setAdjusting(batch)}>
                 Adjust stock
               </Menu.Item>
-              {batch.healthStatus === "EXPIRED" && batch.availableQuantity > 0 ? (
-                <Menu.Item color="danger" leftSection={<IconTrash size={16} aria-hidden />} onClick={() => setAdjusting(batch)}>
-                  Write off expired stock
-                </Menu.Item>
-              ) : null}
-              <Menu.Item
-                component={Link}
-                href={`/admin/ledger?productId=${batch.productId}`}
-                leftSection={<IconFileSpreadsheet size={16} aria-hidden />}
-              >
+            ) : null}
+            <Menu.Item
+              leftSection={<IconPackageImport size={16} aria-hidden />}
+              onClick={() => setParams({ import: batch.productId })}
+            >
+              Import another batch
+            </Menu.Item>
+            {canProducts ? (
+              <Menu.Item component={Link} href={`/admin/products?productId=${batch.productId}`} leftSection={<IconEye size={16} aria-hidden />}>
+                View product
+              </Menu.Item>
+            ) : null}
+            {canAdjust ? (
+              <Menu.Item component={Link} href={`/admin/ledger?productId=${batch.productId}`} leftSection={<IconFileSpreadsheet size={16} aria-hidden />}>
                 Stock history
               </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        ) : null,
+            ) : null}
+          </Menu.Dropdown>
+        </Menu>
+      ),
     },
   ];
 
   const meta = list.data?.meta;
+  const kpiData = kpis.data;
+  const kpiLoading = kpis.isLoading && !kpiData;
 
   return (
-    <Stack gap={0}>
+    <Stack gap="lg">
       <PageHeader
-        title="Batches"
-        description="Batch inspector: every batch in expiry order (first-expired, first-out). Expiring soon = 30 days or less with stock left. Days count in Dhaka time."
+        mb={0}
+        icon={<IconStack2 size={20} />}
+        title="Batch Inspector"
+        subtitle="Every batch in expiry order (first-expired, first-out). Expiring soon = 30 days or less with stock left. Days count in Dhaka time."
         actions={
-          <Button color="secondaryGreen" leftSection={<IconPackageImport size={16} aria-hidden />} onClick={() => setImportOpened(true)}>
-            Import batch
-          </Button>
+          <>
+            <Button component={Link} href="/admin/expiry" variant="default" radius="xl" leftSection={<IconHourglassHigh size={16} aria-hidden />}>
+              Expiry / FEFO
+            </Button>
+            <Button color="secondaryGreen.8" radius="xl" leftSection={<IconPackageImport size={16} aria-hidden />} onClick={() => setImportOpened(true)}>
+              Import batch
+            </Button>
+          </>
         }
       />
 
-      <SegmentedControl
-        mb="md"
-        value={status}
-        onChange={(value) => {
-          setStatus(value === "ALL" ? "ALL" : parseStatus(value));
-          setPage(1);
-        }}
-        aria-label="Batch health"
-        style={{ alignSelf: "flex-start", maxWidth: "100%" }}
-        data={(["ALL", ...BATCH_HEALTH_STATUSES] as StatusFilter[]).map((key) => {
-          const count = countFor(key);
-          return {
-            value: key,
-            label: (
-              <Group gap={6} wrap="nowrap" justify="center">
-                <span>{STATUS_LABELS[key]}</span>
-                {count !== null ? (
-                  <Badge size="xs" variant="light" color={STATUS_COLORS[key]} className="mo-tabular-nums">
-                    {formatCount(count)}
-                  </Badge>
-                ) : null}
-              </Group>
-            ),
-          };
-        })}
-      />
+      {kpis.error && !kpiData ? null : (
+        <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
+          <KpiCard
+            tone="sky"
+            icon={<IconBoxSeam size={24} stroke={1.8} />}
+            label="Batches tracked"
+            value={kpiData ? formatCount(kpiData.total) : undefined}
+            hint={kpiData ? `${formatCount(kpiData.withStock)} still hold stock` : undefined}
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="mint"
+            icon={<IconCircleCheck size={24} stroke={1.8} />}
+            label="Healthy"
+            value={kpiData ? formatCount(kpiData.summary.HEALTHY) : undefined}
+            hint="Over 30 days left, or empty"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="peach"
+            icon={<IconAlertTriangle size={24} stroke={1.8} />}
+            label="Expiring ≤ 30 days"
+            value={kpiData ? formatCount(kpiData.summary.EXPIRING_SOON) : undefined}
+            href="/admin/expiry"
+            linkLabel="Plan FEFO"
+            hint="With stock left"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="rose"
+            icon={<IconCircleX size={24} stroke={1.8} />}
+            label="Expired"
+            value={kpiData ? formatCount(kpiData.summary.EXPIRED) : undefined}
+            href={kpiData && kpiData.expiredWithStock > 0 ? "/admin/expiry" : undefined}
+            linkLabel="Write off"
+            hint={kpiData ? `${formatCount(kpiData.expiredWithStock)} still hold stock` : undefined}
+            loading={kpiLoading}
+          />
+        </SimpleGrid>
+      )}
 
-      <FilterBar activeCount={activeFilters} onReset={clearFilters}>
-        <TextInput
-          variant="search"
-          label="Search"
-          placeholder="Batch number, product or SKU"
-          leftSection={<IconSearch size={16} aria-hidden />}
-          value={search}
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            setPage(1);
-          }}
-          w={{ base: "100%", sm: 280 }}
-        />
-        <ProductPicker
-          label="Product"
-          placeholder="All products"
-          clearable
-          value={productId}
-          initialProduct={filterInitial}
-          onChange={(id) => {
-            setProductId(id);
-            setPage(1);
-          }}
-          w={{ base: "100%", sm: 280 }}
-          radius="xl"
-        />
-        <Switch
-          label="Only batches with stock"
-          checked={inStockOnly}
-          onChange={(event) => {
-            setInStockOnly(event.currentTarget.checked);
-            setPage(1);
-          }}
-          mb={8}
-        />
-      </FilterBar>
-
-      <DataTable
-        label="Batches"
-        columns={columns}
-        rows={list.data?.items}
-        getRowKey={(batch) => batch.id}
-        getRowStyle={(batch) => ROW_STYLES[batch.healthStatus]}
-        loading={list.isLoading}
-        refreshing={list.isLoading && Boolean(list.data)}
-        error={list.error}
-        onRetry={() => void list.mutate()}
-        permission={PERMISSIONS.BATCHES_MANAGE}
-        minWidth={880}
-        emptyIcon={<IconCalendarTime stroke={1.6} />}
-        emptyTitle={status !== "ALL" || activeFilters > 0 ? "No batches match these filters" : "No batches yet"}
-        emptyDescription={
-          status !== "ALL" || activeFilters > 0
-            ? "Try another status or clear the filters."
-            : "Import a batch to add stock. Products go live automatically once they have stock."
+      <ListCard
+        title="Batches"
+        icon={<IconCalendarTime size={18} color="var(--mo-color-secondary-8)" aria-hidden />}
+        subtitle={meta ? `${pluralize(meta.total, filtered ? "matching batch" : "batch", filtered ? "matching batches" : "batches")} · soonest expiry first` : "Loading batches…"}
+        tabs={
+          <CountTabs label="Batch health" value={status} onChange={(next) => setParams({ status: next === "ALL" ? null : next })} tabs={tabs} />
         }
-        pagination={
-          meta
-            ? {
-                page: meta.page,
-                totalPages: meta.totalPages,
-                total: meta.total,
-                limit: meta.limit,
-                onPageChange: setPage,
-                onLimitChange: (value) => {
-                  setLimit(value);
-                  setPage(1);
-                },
-                itemLabel: "batches",
-              }
-            : undefined
+        filters={
+          <>
+            <TextInput
+              aria-label="Search batches"
+              placeholder="Batch number, product or SKU"
+              leftSection={<IconSearch size={16} aria-hidden />}
+              radius="xl"
+              value={search}
+              onChange={(event) => setSearch(event.currentTarget.value)}
+              w={{ base: "100%", sm: 280 }}
+            />
+            <HiddenLabelField w={{ base: "100%", sm: 280 }}>
+              <ProductPicker
+                label="Product"
+                placeholder="All products"
+                clearable
+                value={productId}
+                initialProduct={toOption(filterProduct)}
+                onChange={(id) => setParams({ productId: id })}
+                w="100%"
+                radius="xl"
+              />
+            </HiddenLabelField>
+            <Switch label="Only batches with stock" checked={inStockOnly} onChange={(event) => setInStockOnly(event.currentTarget.checked)} mb={8} />
+          </>
         }
-      />
+        activeFilterCount={activeFilters}
+        onResetFilters={clearFilters}
+      >
+        <DataTable
+          label="Batches"
+          columns={columns}
+          rows={list.data?.items}
+          getRowKey={(batch) => batch.id}
+          getRowStyle={(batch) => ROW_STYLES[batch.healthStatus]}
+          loading={list.isLoading}
+          refreshing={list.isLoading && Boolean(list.data)}
+          error={list.error}
+          onRetry={() => void list.mutate()}
+          permission={PERMISSIONS.BATCHES_MANAGE}
+          minWidth={980}
+          emptyIcon={<IconCalendarTime stroke={1.6} />}
+          emptyTitle={filtered ? "No batches match these filters" : "No batches yet"}
+          emptyDescription={
+            filtered ? "Try another status or clear the filters." : "Import a batch to add stock. Products go live automatically once they have stock."
+          }
+          emptyAction={
+            activeFilters > 0 ? (
+              <Button variant="light" radius="xl" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null
+          }
+          pagination={
+            meta
+              ? {
+                  page: meta.page,
+                  totalPages: meta.totalPages,
+                  total: meta.total,
+                  limit: meta.limit,
+                  onPageChange: paging.setPage,
+                  onLimitChange: paging.setLimit,
+                  itemLabel: "batches",
+                }
+              : undefined
+          }
+        />
+      </ListCard>
 
-      <ImportBatchModal opened={importOpened} onClose={() => setImportOpened(false)} initialProduct={importInitial} />
+      <ImportBatchModal opened={importOpen} onClose={closeImport} initialProduct={importParam ? toOption(importProduct) : null} />
       {canAdjust ? <AdjustStockModal batch={adjusting} onClose={() => setAdjusting(null)} /> : null}
     </Stack>
   );

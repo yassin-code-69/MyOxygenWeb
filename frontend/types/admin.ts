@@ -27,6 +27,11 @@ export interface AdminActiveDiscount {
   countdownMs: number;
 }
 
+/** Per-unit landed cost components (Admin v2). Landed cost = their sum = `costPrice`. */
+export const ADMIN_COST_COMPONENTS = ["supplierPrice", "shipping", "customsDuty", "packaging", "other"] as const;
+export type AdminCostComponent = (typeof ADMIN_COST_COMPONENTS)[number];
+export type AdminCostBreakdown = Record<AdminCostComponent, number>;
+
 export interface AdminProductDTO {
   id: string;
   slug: string;
@@ -49,6 +54,11 @@ export interface AdminProductDTO {
   isActive: boolean;
   createdAt: string;
   costPrice: number;
+  /**
+   * Itemised landed cost; when set, `costPrice` always equals its sum.
+   * Optional so payloads from before Admin v2 still type-check (treat as `null`).
+   */
+  costBreakdown?: AdminCostBreakdown | null;
   lowStockThreshold: number;
   autoDeactivatedAt: string | null;
   listingStatus: AdminListingStatus;
@@ -77,7 +87,11 @@ export const ADMIN_PRODUCT_SORTS = [
 ] as const;
 export type AdminProductSort = (typeof ADMIN_PRODUCT_SORTS)[number];
 
-/** Body of `POST /admin/catalog/products` (strict). */
+/**
+ * Body of `POST /admin/catalog/products` (strict). Send either `costPrice` or
+ * `costBreakdown` (the server then derives `costPrice` from its sum; sending
+ * both with different totals is a 422).
+ */
 export interface AdminProductCreatePayload {
   categoryId: string;
   title: string;
@@ -86,7 +100,9 @@ export interface AdminProductCreatePayload {
   brand?: string | null;
   description: string;
   basePrice: number;
-  costPrice: number;
+  costPrice?: number;
+  /** Object: itemised landed cost. `null` (PATCH): clear it and keep `costPrice` as sent. */
+  costBreakdown?: AdminCostBreakdown | null;
   images?: string[];
   requiresBatchTracking?: boolean;
   lowStockThreshold?: number;

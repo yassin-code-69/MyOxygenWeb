@@ -1,20 +1,28 @@
 "use client";
 
 import { useCallback } from "react";
-import type { KeyedMutator } from "swr";
-import { api, type Page } from "../../lib/api-client";
+import useSWR, { type KeyedMutator } from "swr";
+import { api, type ApiError, type Page } from "../../lib/api-client";
 import { PERMISSIONS } from "../../types/auth";
-import type { OrderStatus } from "../../types/order";
-import type {
-  AdminDispatchPayload,
-  AdminDispatchResult,
-  AdminOrderDTO,
-  AdminOrderDetailDTO,
-  AdminOrderStatusPayload,
-  AdminOrderTrackingDTO,
+import type { OrderStatus, PaymentMethod, PaymentStatus } from "../../types/order";
+import {
+  ADMIN_ORDER_STATUSES,
+  type AdminDispatchPayload,
+  type AdminDispatchResult,
+  type AdminOrderDTO,
+  type AdminOrderDetailDTO,
+  type AdminOrderStatusPayload,
+  type AdminOrderTrackingDTO,
 } from "../../types/admin";
 import type { PaginationMeta } from "../../types/api";
-import { updateItemOptimistically, useAdminPage, useAdminResource, useAdminRevalidate } from "./swr";
+import {
+  cleanParams,
+  updateItemOptimistically,
+  useAdminPage,
+  useAdminResource,
+  useAdminRevalidate,
+  type AdminKey,
+} from "./swr";
 import { useCan } from "./use-permission";
 
 export interface AdminOrderFilters {
@@ -25,9 +33,22 @@ export interface AdminOrderFilters {
   /** Inclusive Dhaka day `YYYY-MM-DD`. */
   from?: string | null;
   to?: string | null;
+  paymentStatus?: PaymentStatus | "ALL";
+  paymentMethod?: PaymentMethod | "ALL";
 }
 
 export type AdminOrdersPage = Page<AdminOrderDTO, PaginationMeta>;
+
+/** The filters every status shares (everything except the status itself and paging). */
+function sharedOrderParams(filters: Omit<AdminOrderFilters, "page" | "limit" | "status">) {
+  return {
+    q: filters.q?.trim() || undefined,
+    from: filters.from ?? undefined,
+    to: filters.to ?? undefined,
+    paymentStatus: filters.paymentStatus && filters.paymentStatus !== "ALL" ? filters.paymentStatus : undefined,
+    paymentMethod: filters.paymentMethod && filters.paymentMethod !== "ALL" ? filters.paymentMethod : undefined,
+  };
+}
 
 /** `GET /admin/orders` (ORDERS_READ). */
 export function useAdminOrders(filters: AdminOrderFilters) {
@@ -38,12 +59,39 @@ export function useAdminOrders(filters: AdminOrderFilters) {
       page: filters.page,
       limit: filters.limit,
       status: filters.status && filters.status !== "ALL" ? filters.status : undefined,
-      q: filters.q?.trim() || undefined,
-      from: filters.from ?? undefined,
-      to: filters.to ?? undefined,
+      ...sharedOrderParams(filters),
     },
     allowed,
     { refreshInterval: 60_000 },
+  );
+}
+
+export type AdminOrderStatusCounts = Record<OrderStatus, number>;
+
+/**
+ * Orders per status for the status tabs, honouring the other filters (search,
+ * dates, payment). One `limit=1` request per status — only `meta.total` is
+ * read — so the counts always match what each tab will list.
+ */
+export function useOrderStatusCounts(filters: Omit<AdminOrderFilters, "page" | "limit" | "status">) {
+  const allowed = useCan(PERMISSIONS.ORDERS_READ);
+  const key: AdminKey | null = allowed ? ["/admin/orders#status-counts", cleanParams(sharedOrderParams(filters))] : null;
+  return useSWR<AdminOrderStatusCounts, ApiError, AdminKey | null>(
+    key,
+    async ([, params]: AdminKey) => {
+      const totals = await Promise.all(
+        ADMIN_ORDER_STATUSES.map(async (status) => {
+          const page = await api.getPage<AdminOrderDTO>("/admin/orders", { ...params, status, page: 1, limit: 1 });
+          return [status, page.meta.total] as const;
+        }),
+      );
+      const counts: AdminOrderStatusCounts = { PENDING: 0, PROCESSING: 0, SHIPPED: 0, DELIVERED: 0, CANCELLED: 0, REFUNDED: 0 };
+      for (const [status, total] of totals) {
+        counts[status] = total;
+      }
+      return counts;
+    },
+    { keepPreviousData: true, refreshInterval: 60_000 },
   );
 }
 

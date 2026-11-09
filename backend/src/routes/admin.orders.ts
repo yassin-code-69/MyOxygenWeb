@@ -26,7 +26,7 @@ function viewerOf(c: Context<AuthContext>): OrderViewer {
   return { id: user.sub, role: user.role };
 }
 
-// GET /admin/analytics/summary — dashboard telemetry
+// GET /admin/analytics/summary — dashboard telemetry (v2: KPIs vs previous period, series, blocks; default last 7 days)
 adminOrdersRoute.get(
   "/analytics/summary",
   requireAuth,
@@ -38,7 +38,7 @@ adminOrdersRoute.get(
   },
 );
 
-// GET /admin/orders — paginated, filterable order list
+// GET /admin/orders — paginated list; filters: status, paymentStatus, paymentMethod (ALL = none), q, from, to
 adminOrdersRoute.get(
   "/orders",
   requireAuth,

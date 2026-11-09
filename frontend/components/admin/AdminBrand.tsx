@@ -1,48 +1,27 @@
 import Link from "next/link";
-import { Anchor, Badge, Box, Group, Text, ThemeIcon } from "@mantine/core";
-import { IconShieldCheck } from "@tabler/icons-react";
+import { Box } from "@mantine/core";
+import { ImageWithFallback } from "../ImageWithFallback";
+import classes from "./AdminShell.module.css";
 
 export interface AdminBrandProps {
   /** Where the logo links (the user's landing page). */
   href: string;
   onNavigate?: () => void;
+  /** Heart mark only (narrow headers). */
+  compact?: boolean;
 }
 
-/** "My Oxygen · Admin" brand mark for the header. */
-export function AdminBrand({ href, onNavigate }: AdminBrandProps) {
+/** Heart logo + "My Oxygen" wordmark + tagline, linking to the back-office home. */
+export function AdminBrand({ href, onNavigate, compact = false }: AdminBrandProps) {
   return (
-    <Anchor
-      component={Link}
-      href={href}
-      onClick={onNavigate}
-      underline="never"
-      c="inherit"
-      aria-label="My Oxygen back-office home"
-    >
-      <Group gap="sm" wrap="nowrap">
-        <ThemeIcon
-          size={38}
-          radius="md"
-          variant="gradient"
-          gradient={{ from: "primaryPink.6", to: "primaryPink.3", deg: 135 }}
-          aria-hidden
-        >
-          <IconShieldCheck size={20} stroke={2.2} />
-        </ThemeIcon>
-        <Box style={{ minWidth: 0 }}>
-          <Group gap={6} wrap="nowrap">
-            <Text fw={700} ff="var(--mo-font-heading)" lh={1.2}>
-              My Oxygen
-            </Text>
-            <Badge size="xs" variant="light" color="primaryPink">
-              Admin
-            </Badge>
-          </Group>
-          <Text size="xs" c="dimmed" lh={1.3} visibleFrom="xs">
-            Store back-office
-          </Text>
+    <Link href={href} onClick={onNavigate} className={classes.brand} aria-label="My Oxygen back-office home">
+      <ImageWithFallback src="/icons/logo-heart.svg" alt="" width={compact ? 34 : 40} height={compact ? 34 : 40} loading="eager" />
+      {compact ? null : (
+        <Box>
+          <div className={classes.brandName}>My Oxygen</div>
+          <div className={classes.brandTagline}>Healthy Life • Happy You</div>
         </Box>
-      </Group>
-    </Anchor>
+      )}
+    </Link>
   );
 }

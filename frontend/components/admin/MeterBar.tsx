@@ -1,8 +1,10 @@
 import { Box, type MantineColor } from "@mantine/core";
+import { cssColor } from "./kit/tones";
 
 export interface MeterBarProps {
   /** 0–1 share of the track. */
   ratio: number;
+  /** Theme color name (`secondaryGreen`, shade 6) or name with shade (`info.5`). */
   color?: MantineColor;
   height?: number;
 }
@@ -25,7 +27,7 @@ export function MeterBar({ ratio, color = "primaryPink", height = 8 }: MeterBarP
     >
       <Box
         h="100%"
-        bg={`var(--mantine-color-${color}-6)`}
+        bg={cssColor(color)}
         style={{
           borderRadius: "var(--mo-radius-xl)",
           transform: `scaleX(${clamped})`,

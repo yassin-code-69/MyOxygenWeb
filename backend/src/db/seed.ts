@@ -200,7 +200,7 @@ const PRODUCT_SEED: ReadonlyArray<ProductSeed> = [
     costPrice: 1700,
     description:
       "Essential baby skincare gift set with gentle cleansing gel, hydra-bebe body lotion and vitamin barrier cream, formulated with natural avocado perseose.",
-    images: ["https://images.unsplash.com/photo-1556228722-d0b5de70b774?w=500&auto=format&fit=crop&q=80"],
+    images: ["/images/test-pexels-1.jpg"], // the previous Unsplash photo was removed upstream (404)
     requiresBatchTracking: true,
     lowStockThreshold: 5,
     batches: [
@@ -295,7 +295,7 @@ const PRODUCT_SEED: ReadonlyArray<ProductSeed> = [
     costPrice: 880,
     description:
       "Daily moisture wash and shampoo with natural oat extract. Tear-free, soap-free and gentle enough for everyday baths.",
-    images: ["https://images.unsplash.com/photo-1608248597359-0f62b291d6df?w=500&auto=format&fit=crop&q=80"],
+    images: ["/images/test-pexels-3.jpg"], // the previous Unsplash photo was removed upstream (404)
     requiresBatchTracking: true,
     lowStockThreshold: 10,
     batches: [
@@ -425,7 +425,7 @@ const PRODUCT_SEED: ReadonlyArray<ProductSeed> = [
     costPrice: 470,
     description:
       "Lanolin-free organic balm with shea butter and calendula that soothes and protects sore nipples. Safe for baby — no need to wipe off before feeding.",
-    images: ["https://images.unsplash.com/photo-1556228722-d0b5de70b774?w=500&auto=format&fit=crop&q=80"],
+    images: ["/images/test-pexels-skin.jpg"], // the previous Unsplash photo was removed upstream (404)
     requiresBatchTracking: true,
     lowStockThreshold: 8,
     batches: [
@@ -717,6 +717,8 @@ async function seedProducts(
         description: excluded(products.description),
         basePrice: excluded(products.basePrice),
         costPrice: excluded(products.costPrice),
+        // A cost breakdown must always sum to cost_price: drop it when the seed changes the cost.
+        costBreakdown: sql`CASE WHEN ${sql.raw(`"products"."cost_price"`)} = ${excluded(products.costPrice)} THEN ${sql.raw(`"products"."cost_breakdown"`)} ELSE NULL END`,
         images: excluded(products.images),
         requiresBatchTracking: excluded(products.requiresBatchTracking),
         lowStockThreshold: excluded(products.lowStockThreshold),

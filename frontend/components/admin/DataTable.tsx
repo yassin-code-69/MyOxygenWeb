@@ -169,7 +169,7 @@ export function DataTable<T>({
   }
 
   return (
-    <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
+    <Paper withBorder radius="md" shadow="xs" style={{ overflow: "hidden" }}>
       <Table.ScrollContainer minWidth={minWidth} maxHeight={maxHeight} type="native">
         <Table
           stickyHeader
@@ -189,7 +189,7 @@ export function DataTable<T>({
                   w={column.width}
                   scope="col"
                 >
-                  <Text component="span" size="xs" fw={600} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+                  <Text component="span" size="xs" fw={600} c="var(--mo-color-text-secondary)" style={{ whiteSpace: "nowrap" }}>
                     {column.header}
                   </Text>
                 </Table.Th>

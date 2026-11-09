@@ -2,49 +2,62 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import {
   ActionIcon,
-  Anchor,
   Badge,
   Box,
   Button,
   Group,
   Menu,
-  SegmentedControl,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
+  UnstyledButton,
   VisuallyHidden,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
+  IconAlertTriangle,
+  IconBolt,
+  IconCircleCheck,
   IconDiscount,
   IconDotsVertical,
   IconEye,
   IconEyeOff,
+  IconHourglass,
   IconPackage,
   IconPackageImport,
+  IconPackages,
   IconPencil,
   IconPlus,
   IconRestore,
   IconSearch,
+  IconTable,
 } from "@tabler/icons-react";
-import { ImageWithFallback } from "../../../components/ImageWithFallback";
-import { Price } from "../../../components/Price";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { ConfirmModal } from "../../../components/admin/ConfirmModal";
 import { DataTable, type DataTableColumn } from "../../../components/admin/DataTable";
-import { FilterBar } from "../../../components/admin/FilterBar";
 import { ListingStatusBadge } from "../../../components/admin/ListingStatusBadge";
-import { PageHeader } from "../../../components/admin/PageHeader";
 import { RequirePermission } from "../../../components/admin/RequirePermission";
-import { formatCalendarDate, formatCount, formatDhakaDate, formatMoney } from "../../../components/admin/format";
+import { formatCalendarDate, formatCount, formatDhakaDate, formatMoney, pluralize } from "../../../components/admin/format";
+import { KpiCard, PageHeader, Thumb } from "../../../components/admin/kit";
+import { CountTabs, type CountTab } from "../../../components/admin/products/CountTabs";
+import { ListCard } from "../../../components/admin/products/ListCard";
+import { MarginBadge } from "../../../components/admin/products/pricing";
 import { ProductDetailDrawer } from "../../../components/admin/products/ProductDetailDrawer";
 import { ProductFormModal } from "../../../components/admin/products/ProductFormModal";
-import { useAdminProducts, useCategories, useProductMutations } from "../../../hooks/admin/use-admin-products";
+import {
+  useAdminProducts,
+  useCategories,
+  useProductBrandOptions,
+  useProductKpis,
+  useProductMutations,
+  useProductStatusCounts,
+} from "../../../hooks/admin/use-admin-products";
+import { pickParam, usePaging, useUrlParams } from "../../../hooks/admin/use-ops-url-state";
 import { useCan } from "../../../hooks/admin/use-permission";
 import { getErrorMessage } from "../../../lib/api-client";
 import { PERMISSIONS } from "../../../types/auth";
@@ -58,12 +71,14 @@ import {
   type AdminStockFilter,
 } from "../../../types/admin";
 
-const STATUS_OPTIONS: { value: AdminProductStatusFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "active", label: "Live" },
-  { value: "awaiting_stock", label: "Awaiting stock" },
-  { value: "inactive", label: "Inactive" },
-];
+const STATUS_LABELS: Record<AdminProductStatusFilter, string> = {
+  all: "All",
+  active: "Live",
+  awaiting_stock: "Awaiting stock",
+  inactive: "Inactive",
+};
+
+const STATUS_ORDER: readonly AdminProductStatusFilter[] = ["all", "active", "awaiting_stock", "inactive"];
 
 const STOCK_OPTIONS: { value: AdminStockFilter; label: string }[] = [
   { value: "all", label: "Any stock" },
@@ -83,8 +98,14 @@ const SORT_OPTIONS: { value: AdminProductSort; label: string }[] = [
   { value: "stock_desc", label: "Stock: high to low" },
 ];
 
-function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
-  return allowed.find((item) => item === value) ?? fallback;
+const CATEGORY_COLORS = ["secondaryGreen", "accentPurple", "info", "warning", "primaryPink"] as const;
+
+function categoryColor(id: string): (typeof CATEGORY_COLORS)[number] {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash * 31 + id.charCodeAt(index)) | 0;
+  }
+  return CATEGORY_COLORS[Math.abs(hash) % CATEGORY_COLORS.length] ?? "secondaryGreen";
 }
 
 export default function AdminProductsPage() {
@@ -96,73 +117,73 @@ export default function AdminProductsPage() {
 }
 
 function ProductsView() {
-  const searchParams = useSearchParams();
+  const { searchParams, setParams } = useUrlParams();
   const canWrite = useCan(PERMISSIONS.PRODUCTS_WRITE);
   const canBatches = useCan(PERMISSIONS.BATCHES_MANAGE);
   const canDiscounts = useCan(PERMISSIONS.DISCOUNTS_MANAGE);
 
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
-  const [debouncedSearch] = useDebouncedValue(search, 300);
-  const [brand, setBrand] = useState("");
-  const [debouncedBrand] = useDebouncedValue(brand, 300);
-  const [status, setStatus] = useState<AdminProductStatusFilter>(() =>
-    pick(searchParams.get("status"), ADMIN_PRODUCT_STATUS_FILTERS, "all"),
-  );
-  const [stock, setStock] = useState<AdminStockFilter>(() => pick(searchParams.get("stock"), ADMIN_STOCK_FILTERS, "all"));
-  const [category, setCategory] = useState<string | null>(() => searchParams.get("category"));
-  const [sort, setSort] = useState<AdminProductSort>("newest");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  // Deep links (and every filter that can arrive through one) live in the URL.
+  const status = pickParam(searchParams.get("status"), ADMIN_PRODUCT_STATUS_FILTERS, "all");
+  const stock = pickParam(searchParams.get("stock"), ADMIN_STOCK_FILTERS, "all");
+  const category = searchParams.get("category");
+  const brand = searchParams.get("brand");
+  const detailId = searchParams.get("productId");
+  const createOpen = canWrite && searchParams.get("new") === "1";
+  const urlQuery = searchParams.get("q") ?? "";
 
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState({ source: urlQuery, text: urlQuery });
+  const search = searchDraft.source === urlQuery ? searchDraft.text : urlQuery;
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [sort, setSort] = useState<AdminProductSort>("newest");
   const [editing, setEditing] = useState<AdminProductDTO | null>(null);
-  const [formOpened, setFormOpened] = useState(false);
   const [deactivating, setDeactivating] = useState<AdminProductDTO | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const list = useAdminProducts({
-    page,
-    limit,
-    q: debouncedSearch,
-    brand: debouncedBrand,
-    status,
-    stock,
-    category,
-    sort,
-  });
+  const filters = { q: debouncedSearch, category, brand: brand ?? undefined, stock };
+  const paging = usePaging(JSON.stringify({ ...filters, status, sort }));
+  const list = useAdminProducts({ page: paging.page, limit: paging.limit, status, sort, ...filters });
+  const statusCounts = useProductStatusCounts(filters);
+  const kpis = useProductKpis();
   const { data: categories } = useCategories();
+  const { data: brands } = useProductBrandOptions();
   const { deactivateProduct, reactivateProduct } = useProductMutations();
 
-  const categoryOptions = useMemo(
-    () => (categories ?? []).map((item) => ({ value: item.id, label: item.name })),
-    [categories],
-  );
+  const categoryOptions = useMemo(() => {
+    const options = (categories ?? []).map((item) => ({ value: item.slug, label: item.name }));
+    if (category && !options.some((option) => option.value === category)) {
+      const byId = categories?.find((item) => item.id === category);
+      options.unshift({ value: category, label: byId?.name ?? category });
+    }
+    return options;
+  }, [categories, category]);
 
-  const resetPage = <T,>(setter: (value: T) => void) => (value: T) => {
-    setter(value);
-    setPage(1);
-  };
+  const brandOptions = useMemo(() => {
+    const options = (brands ?? []).map((item) => ({ value: item.name, label: `${item.name} (${formatCount(item.productCount)})` }));
+    if (brand && !options.some((option) => option.value.toLowerCase() === brand.toLowerCase())) {
+      options.unshift({ value: brand, label: brand });
+    }
+    return options;
+  }, [brands, brand]);
+  const brandValue = brandOptions.find((option) => option.value.toLowerCase() === brand?.toLowerCase())?.value ?? null;
 
-  const activeFilters =
-    (search.trim() ? 1 : 0) + (brand.trim() ? 1 : 0) + (stock !== "all" ? 1 : 0) + (category ? 1 : 0) + (status !== "all" ? 1 : 0);
+  const activeFilters = (search.trim() ? 1 : 0) + (brand ? 1 : 0) + (stock !== "all" ? 1 : 0) + (category ? 1 : 0);
+  const filtered = activeFilters > 0 || status !== "all";
 
   const clearFilters = () => {
-    setSearch("");
-    setBrand("");
-    setStock("all");
-    setCategory(null);
-    setStatus("all");
-    setPage(1);
+    setSearchDraft({ source: urlQuery, text: "" });
+    setParams({ q: null, brand: null, stock: null, category: null });
   };
 
   const openCreate = () => {
     setEditing(null);
-    setFormOpened(true);
+    setParams({ new: "1" });
   };
-
-  const openEdit = (product: AdminProductDTO) => {
-    setEditing(product);
-    setFormOpened(true);
+  const openDetail = (productId: string) => setParams({ productId });
+  const closeForm = () => {
+    setEditing(null);
+    if (searchParams.get("new") !== null) {
+      setParams({ new: null });
+    }
   };
 
   const confirmDeactivate = async () => {
@@ -201,29 +222,32 @@ function ProductsView() {
     }
   };
 
+  const counts = statusCounts.data;
+  const tabs: CountTab<AdminProductStatusFilter>[] = STATUS_ORDER.map((value) => ({
+    value,
+    label: STATUS_LABELS[value],
+    count: counts ? counts[value] : null,
+  }));
+
   const columns: DataTableColumn<AdminProductDTO>[] = [
     {
       key: "product",
       header: "Product",
+      width: 300,
       skeletonWidth: "85%",
       cell: (product) => (
-        <Group gap="sm" wrap="nowrap">
-          <Box
-            w={44}
-            h={44}
-            style={{ position: "relative", flexShrink: 0, borderRadius: "var(--mo-radius-sm)", overflow: "hidden", border: "1px solid var(--mo-color-border-subtle)" }}
-          >
-            <ImageWithFallback src={product.images[0]} alt="" fill sizes="44px" style={{ objectFit: "cover" }} />
-          </Box>
+        <Group gap="sm" wrap="nowrap" miw={240}>
+          <Thumb src={product.images[0]} size={44} />
           <Box style={{ minWidth: 0 }}>
-            <Anchor component="button" type="button" fw={600} size="sm" ta="left" lineClamp={2} onClick={() => setDetailId(product.id)}>
-              {product.title}
-            </Anchor>
-            <Text size="xs" c="dimmed" truncate>
+            <UnstyledButton onClick={() => openDetail(product.id)} aria-label={`Open ${product.title}`}>
+              <Text size="sm" fw={600} lineClamp={2} c="var(--mo-color-text)">
+                {product.title}
+              </Text>
+            </UnstyledButton>
+            <Text size="xs" c="var(--mo-color-text-muted)" truncate>
               <Text component="span" inherit ff="var(--mo-font-monospace)">
                 {product.sku}
-              </Text>{" "}
-              · {product.category.name}
+              </Text>
               {product.brand ? ` · ${product.brand}` : ""}
             </Text>
           </Box>
@@ -231,37 +255,58 @@ function ProductsView() {
       ),
     },
     {
-      key: "status",
-      header: "Listing",
-      width: 160,
+      key: "category",
+      header: "Category",
+      width: 170,
       cell: (product) => (
-        <Stack gap={4} align="flex-start">
-          <ListingStatusBadge status={product.listingStatus} />
-          {product.activeDiscount ? (
-            <Badge size="xs" variant="light" color={product.activeDiscount.isFlashSale ? "accentPurple" : "primaryPink"}>
-              {product.activeDiscount.isFlashSale ? "Flash sale" : "Discount"} −{product.discountPercent}%
-            </Badge>
-          ) : null}
-        </Stack>
+        <Badge variant="light" color={categoryColor(product.category.id)} radius="xl" tt="none" fw={600} style={{ maxWidth: "none" }}>
+          {product.category.name}
+        </Badge>
       ),
     },
     {
       key: "price",
       header: "Price",
       align: "right",
-      width: 130,
-      cell: (product) => <Price value={product.effectivePrice} compareAt={product.basePrice} size="sm" />,
+      width: 150,
+      cell: (product) => (
+        <Stack gap={2} align="flex-end">
+          <Text size="sm" fw={700} className="mo-tabular-nums" c="var(--mo-color-text)" style={{ whiteSpace: "nowrap" }}>
+            {formatMoney(product.effectivePrice)}
+          </Text>
+          {product.effectivePrice < product.basePrice ? (
+            <Group gap={4} wrap="nowrap">
+              <Text size="xs" c="var(--mo-color-text-muted)" td="line-through" className="mo-tabular-nums">
+                {formatMoney(product.basePrice)}
+              </Text>
+              <Badge
+                size="xs"
+                variant="light"
+                radius="xl"
+                color={product.activeDiscount?.isFlashSale ? "accentPurple" : "primaryPink"}
+                leftSection={product.activeDiscount?.isFlashSale ? <IconBolt size={10} aria-hidden /> : undefined}
+                className="mo-tabular-nums"
+                style={{ maxWidth: "none", overflow: "visible" }}
+              >
+                −{Math.round(product.discountPercent)}%
+              </Badge>
+            </Group>
+          ) : null}
+        </Stack>
+      ),
     },
     {
-      key: "cost",
-      header: "Cost",
+      key: "margin",
+      header: "Cost · margin",
       align: "right",
-      width: 110,
-      visibleFrom: "lg",
+      width: 130,
       cell: (product) => (
-        <Text size="sm" c="dimmed" className="mo-tabular-nums">
-          {formatMoney(product.costPrice)}
-        </Text>
+        <Stack gap={4} align="flex-end">
+          <Text size="xs" c="var(--mo-color-text-secondary)" className="mo-tabular-nums" style={{ whiteSpace: "nowrap" }}>
+            {formatMoney(product.costPrice)}
+          </Text>
+          <MarginBadge price={product.effectivePrice} cost={product.costPrice} size="sm" />
+        </Stack>
       ),
     },
     {
@@ -270,16 +315,16 @@ function ProductsView() {
       align: "right",
       width: 140,
       cell: (product) => (
-        <Stack gap={2} align="flex-end">
+        <Stack gap={4} align="flex-end">
           <Group gap={6} wrap="nowrap" justify="flex-end">
             {product.isOutOfStock ? <StatusBadge status="OUT_OF_STOCK" size="xs" withIcon={false} /> : null}
             {!product.isOutOfStock && product.isLowStock ? <StatusBadge status="LOW_STOCK" size="xs" withIcon={false} /> : null}
-            <Text size="sm" fw={600} className="mo-tabular-nums">
+            <Text size="sm" fw={700} className="mo-tabular-nums" c="var(--mo-color-text)">
               {formatCount(product.totalStock)}
             </Text>
           </Group>
           {product.requiresBatchTracking && product.earliestExpiry ? (
-            <Text size="xs" c="dimmed">
+            <Text size="xs" c="var(--mo-color-text-muted)" style={{ whiteSpace: "nowrap" }}>
               Exp. {formatCalendarDate(product.earliestExpiry)}
             </Text>
           ) : null}
@@ -287,12 +332,18 @@ function ProductsView() {
       ),
     },
     {
+      key: "status",
+      header: "Listing",
+      width: 140,
+      cell: (product) => <ListingStatusBadge status={product.listingStatus} />,
+    },
+    {
       key: "updated",
       header: "Updated",
-      width: 130,
+      width: 120,
       visibleFrom: "xl",
       cell: (product) => (
-        <Text size="sm" c="dimmed">
+        <Text size="xs" c="var(--mo-color-text-secondary)" style={{ whiteSpace: "nowrap" }}>
           {formatDhakaDate(product.updatedAt)}
         </Text>
       ),
@@ -301,75 +352,84 @@ function ProductsView() {
       key: "actions",
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       align: "right",
-      width: 60,
-      skeletonWidth: 24,
+      width: 110,
+      skeletonWidth: 70,
       cell: (product) => (
-        <Menu position="bottom-end" withinPortal>
-          <Menu.Target>
-            <ActionIcon variant="subtle" color="gray" aria-label={`Actions for ${product.title}`}>
-              <IconDotsVertical size={18} aria-hidden />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item leftSection={<IconEye size={16} aria-hidden />} onClick={() => setDetailId(product.id)}>
-              View details & batches
-            </Menu.Item>
-            {canWrite ? (
-              <Menu.Item leftSection={<IconPencil size={16} aria-hidden />} onClick={() => openEdit(product)}>
-                Edit
+        <Group gap={6} justify="flex-end" wrap="nowrap">
+          <Button size="compact-sm" radius="xl" variant="light" color="info" onClick={() => openDetail(product.id)} aria-label={`View ${product.title}`}>
+            View
+          </Button>
+          <Menu position="bottom-end" withinPortal width={250}>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" radius="xl" aria-label={`Actions for ${product.title}`}>
+                <IconDotsVertical size={18} aria-hidden />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconEye size={16} aria-hidden />} onClick={() => openDetail(product.id)}>
+                View details & batches
               </Menu.Item>
-            ) : null}
-            {canBatches ? (
-              <Menu.Item component={Link} href={`/admin/batches?import=${product.id}`} leftSection={<IconPackageImport size={16} aria-hidden />}>
-                Import batch
-              </Menu.Item>
-            ) : null}
-            {canDiscounts ? (
-              <Menu.Item
-                component={Link}
-                href={`/admin/discounts?new=automatic&productId=${product.id}`}
-                leftSection={<IconDiscount size={16} aria-hidden />}
-              >
-                Create discount / flash sale
-              </Menu.Item>
-            ) : null}
-            {canWrite ? <Menu.Divider /> : null}
-            {canWrite && product.listingStatus !== "INACTIVE" ? (
-              <Menu.Item color="danger" leftSection={<IconEyeOff size={16} aria-hidden />} onClick={() => setDeactivating(product)}>
-                Deactivate (hide)
-              </Menu.Item>
-            ) : null}
-            {canWrite && product.listingStatus === "INACTIVE" ? (
-              <Menu.Item leftSection={<IconRestore size={16} aria-hidden />} onClick={() => void handleReactivate(product)}>
-                Reactivate
-              </Menu.Item>
-            ) : null}
-          </Menu.Dropdown>
-        </Menu>
+              {canWrite ? (
+                <Menu.Item leftSection={<IconPencil size={16} aria-hidden />} onClick={() => setEditing(product)}>
+                  Edit
+                </Menu.Item>
+              ) : null}
+              {canBatches ? (
+                <Menu.Item component={Link} href={`/admin/batches?import=${product.id}`} leftSection={<IconPackageImport size={16} aria-hidden />}>
+                  Import batch
+                </Menu.Item>
+              ) : null}
+              {canDiscounts ? (
+                <Menu.Item
+                  component={Link}
+                  href={`/admin/discounts?new=automatic&productId=${product.id}`}
+                  leftSection={<IconDiscount size={16} aria-hidden />}
+                >
+                  Create discount / flash sale
+                </Menu.Item>
+              ) : null}
+              {canWrite ? <Menu.Divider /> : null}
+              {canWrite && product.listingStatus !== "INACTIVE" ? (
+                <Menu.Item color="danger" leftSection={<IconEyeOff size={16} aria-hidden />} onClick={() => setDeactivating(product)}>
+                  Deactivate (hide)
+                </Menu.Item>
+              ) : null}
+              {canWrite && product.listingStatus === "INACTIVE" ? (
+                <Menu.Item leftSection={<IconRestore size={16} aria-hidden />} onClick={() => void handleReactivate(product)}>
+                  Reactivate
+                </Menu.Item>
+              ) : null}
+            </Menu.Dropdown>
+          </Menu>
+        </Group>
       ),
     },
   ];
 
   const meta = list.data?.meta;
+  const kpiData = kpis.data;
+  const kpiLoading = kpis.isLoading && !kpiData;
 
   return (
-    <Stack gap={0}>
+    <Stack gap="lg">
       <PageHeader
+        mb={0}
+        icon={<IconPackage size={20} />}
         title="Products"
-        description={
+        subtitle={
           canWrite
-            ? "Catalog, prices and listing status. New products stay hidden (Awaiting stock) until their first batch is imported."
+            ? "Catalog, prices, landed cost and listing status. New products stay hidden (Awaiting stock) until their first batch is imported."
             : "Catalog, prices and listing status. You have read-only access."
         }
         actions={
           <>
             {canDiscounts ? (
-              <Button component={Link} href="/admin/discounts" variant="default" leftSection={<IconDiscount size={16} aria-hidden />}>
+              <Button component={Link} href="/admin/discounts" variant="default" radius="xl" leftSection={<IconDiscount size={16} aria-hidden />}>
                 Discounts
               </Button>
             ) : null}
             {canWrite ? (
-              <Button leftSection={<IconPlus size={16} aria-hidden />} onClick={openCreate}>
+              <Button radius="xl" color="secondaryGreen.8" leftSection={<IconPlus size={16} aria-hidden />} onClick={openCreate}>
                 New product
               </Button>
             ) : null}
@@ -377,111 +437,183 @@ function ProductsView() {
         }
       />
 
-      <SegmentedControl
-        mb="md"
-        value={status}
-        onChange={(value) => resetPage(setStatus)(pick(value, ADMIN_PRODUCT_STATUS_FILTERS, "all"))}
-        data={STATUS_OPTIONS}
-        aria-label="Listing status"
-        style={{ alignSelf: "flex-start", maxWidth: "100%" }}
-      />
+      {kpis.error && !kpiData ? null : (
+        <SimpleGrid cols={{ base: 1, xs: 2, md: 3, xl: 5 }} spacing="md">
+          <KpiCard
+            tone="sky"
+            icon={<IconPackages size={24} stroke={1.8} />}
+            label="Total products"
+            value={kpiData ? formatCount(kpiData.total) : undefined}
+            hint="Every listing status"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="mint"
+            icon={<IconCircleCheck size={24} stroke={1.8} />}
+            label="Live"
+            value={kpiData ? formatCount(kpiData.live) : undefined}
+            href="/admin/products?status=active"
+            linkLabel="View"
+            hint="On the storefront"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="lavender"
+            icon={<IconHourglass size={24} stroke={1.8} />}
+            label="Awaiting stock"
+            value={kpiData ? formatCount(kpiData.awaitingStock) : undefined}
+            href="/admin/products?status=awaiting_stock"
+            linkLabel="View"
+            hint="Live with next batch"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="peach"
+            icon={<IconEyeOff size={24} stroke={1.8} />}
+            label="Inactive"
+            value={kpiData ? formatCount(kpiData.inactive) : undefined}
+            href="/admin/products?status=inactive"
+            linkLabel="View"
+            hint="Hidden by an admin"
+            loading={kpiLoading}
+          />
+          <KpiCard
+            tone="rose"
+            icon={<IconAlertTriangle size={24} stroke={1.8} />}
+            label="Low stock"
+            value={kpiData ? formatCount(kpiData.lowStock) : undefined}
+            href="/admin/products?stock=low"
+            linkLabel="View"
+            hint={kpiData ? `${formatCount(kpiData.outOfStock)} out of stock` : undefined}
+            loading={kpiLoading}
+          />
+        </SimpleGrid>
+      )}
 
-      <FilterBar activeCount={activeFilters} onReset={clearFilters}>
-        <TextInput
-          variant="search"
-          label="Search"
-          placeholder="Title, SKU or brand"
-          leftSection={<IconSearch size={16} aria-hidden />}
-          value={search}
-          onChange={(event) => resetPage(setSearch)(event.currentTarget.value)}
-          w={{ base: "100%", sm: 260 }}
-        />
-        <Select
-          label="Category"
-          placeholder="All categories"
-          data={categoryOptions}
-          value={category}
-          onChange={resetPage(setCategory)}
-          searchable
-          clearable
-          nothingFoundMessage="No matching category"
-          w={{ base: "100%", sm: 220 }}
-          radius="xl"
-        />
-        <TextInput
-          label="Brand"
-          placeholder="Any brand"
-          value={brand}
-          onChange={(event) => resetPage(setBrand)(event.currentTarget.value)}
-          w={{ base: "100%", sm: 160 }}
-          radius="xl"
-        />
-        <Select
-          label="Stock"
-          data={STOCK_OPTIONS}
-          value={stock}
-          onChange={(value) => resetPage(setStock)(pick(value, ADMIN_STOCK_FILTERS, "all"))}
-          allowDeselect={false}
-          w={{ base: "100%", sm: 150 }}
-          radius="xl"
-        />
-        <Select
-          label="Sort"
-          data={SORT_OPTIONS}
-          value={sort}
-          onChange={(value) => resetPage(setSort)(pick(value, ADMIN_PRODUCT_SORTS, "newest"))}
-          allowDeselect={false}
-          w={{ base: "100%", sm: 190 }}
-          radius="xl"
-        />
-      </FilterBar>
-
-      <DataTable
-        label="Products"
-        columns={columns}
-        rows={list.data?.items}
-        getRowKey={(product) => product.id}
-        loading={list.isLoading}
-        refreshing={list.isLoading && Boolean(list.data)}
-        error={list.error}
-        onRetry={() => void list.mutate()}
-        permission={PERMISSIONS.PRODUCTS_READ}
-        minWidth={900}
-        emptyIcon={<IconPackage stroke={1.6} />}
-        emptyTitle={activeFilters > 0 ? "No products match these filters" : "No products yet"}
-        emptyDescription={activeFilters > 0 ? "Try a different search or clear the filters." : canWrite ? "Create your first product to start selling." : undefined}
-        emptyAction={
-          activeFilters > 0 ? (
-            <Button variant="light" onClick={clearFilters}>
-              Clear filters
-            </Button>
-          ) : null
+      <ListCard
+        title="Product catalog"
+        icon={<IconTable size={18} color="var(--mo-color-secondary-8)" aria-hidden />}
+        subtitle={meta ? pluralize(meta.total, filtered ? "matching product" : "product") : "Loading products…"}
+        tabs={
+          <CountTabs
+            label="Listing status"
+            value={status}
+            onChange={(next) => setParams({ status: next === "all" ? null : next })}
+            tabs={tabs}
+          />
         }
-        pagination={
-          meta
-            ? {
-                page: meta.page,
-                totalPages: meta.totalPages,
-                total: meta.total,
-                limit: meta.limit,
-                onPageChange: setPage,
-                onLimitChange: resetPage(setLimit),
-                itemLabel: "products",
-              }
-            : undefined
+        filters={
+          <>
+            <TextInput
+              aria-label="Search products"
+              placeholder="Title, SKU or brand"
+              leftSection={<IconSearch size={16} aria-hidden />}
+              radius="xl"
+              value={search}
+              onChange={(event) => setSearchDraft({ source: urlQuery, text: event.currentTarget.value })}
+              w={{ base: "100%", sm: 260 }}
+            />
+            <Select
+              aria-label="Category"
+              placeholder="All categories"
+              data={categoryOptions}
+              value={category}
+              onChange={(value) => setParams({ category: value })}
+              searchable
+              clearable
+              nothingFoundMessage="No matching category"
+              w={{ base: "100%", xs: 200 }}
+              radius="xl"
+            />
+            <Select
+              aria-label="Brand"
+              placeholder="All brands"
+              data={brandOptions}
+              value={brandValue}
+              onChange={(value) => setParams({ brand: value })}
+              searchable
+              clearable
+              nothingFoundMessage="No matching brand"
+              w={{ base: "100%", xs: 190 }}
+              radius="xl"
+            />
+            <Select
+              aria-label="Stock level"
+              data={STOCK_OPTIONS}
+              value={stock}
+              onChange={(value) => setParams({ stock: value === "all" ? null : value })}
+              allowDeselect={false}
+              w={{ base: "100%", xs: 150 }}
+              radius="xl"
+            />
+            <Select
+              aria-label="Sort"
+              data={SORT_OPTIONS}
+              value={sort}
+              onChange={(value) => setSort(pickParam(value, ADMIN_PRODUCT_SORTS, "newest"))}
+              allowDeselect={false}
+              w={{ base: "100%", xs: 190 }}
+              radius="xl"
+            />
+          </>
         }
-      />
+        activeFilterCount={activeFilters}
+        onResetFilters={clearFilters}
+      >
+        <DataTable
+          label="Products"
+          columns={columns}
+          rows={list.data?.items}
+          getRowKey={(product) => product.id}
+          loading={list.isLoading}
+          refreshing={list.isLoading && Boolean(list.data)}
+          error={list.error}
+          onRetry={() => void list.mutate()}
+          permission={PERMISSIONS.PRODUCTS_READ}
+          minWidth={1140}
+          emptyIcon={<IconPackage stroke={1.6} />}
+          emptyTitle={filtered ? "No products match these filters" : "No products yet"}
+          emptyDescription={
+            filtered ? "Try a different search, another status or clear the filters." : canWrite ? "Create your first product to start selling." : undefined
+          }
+          emptyAction={
+            activeFilters > 0 ? (
+              <Button variant="light" radius="xl" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : !filtered && canWrite ? (
+              <Button radius="xl" color="secondaryGreen.8" leftSection={<IconPlus size={16} aria-hidden />} onClick={openCreate}>
+                New product
+              </Button>
+            ) : null
+          }
+          pagination={
+            meta
+              ? {
+                  page: meta.page,
+                  totalPages: meta.totalPages,
+                  total: meta.total,
+                  limit: meta.limit,
+                  onPageChange: paging.setPage,
+                  onLimitChange: paging.setLimit,
+                  itemLabel: "products",
+                }
+              : undefined
+          }
+        />
+      </ListCard>
 
-      <ProductDetailDrawer productId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} />
+      <ProductDetailDrawer productId={detailId} onClose={() => setParams({ productId: null })} onEdit={setEditing} />
 
       {canWrite ? (
         <ProductFormModal
-          opened={formOpened}
+          opened={createOpen || editing !== null}
           product={editing}
-          onClose={() => setFormOpened(false)}
+          onClose={closeForm}
           onSaved={(saved) => {
             if (!editing) {
-              setDetailId(saved.id);
+              // Show the new product (and its "import the first batch" hint) right away.
+              setParams({ new: null, productId: saved.id });
             }
           }}
         />
@@ -500,7 +632,7 @@ function ProductsView() {
             <Text size="sm">
               <strong>{deactivating?.title}</strong> will be hidden from the storefront and can&apos;t be ordered.
             </Text>
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="var(--mo-color-text-secondary)">
               It is not deleted: past orders, batches and stock history stay intact, and you can reactivate it at any time.
             </Text>
           </Stack>

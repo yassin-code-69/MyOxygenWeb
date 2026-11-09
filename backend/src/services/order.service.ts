@@ -6,14 +6,16 @@
  *     sorted lines) BEFORE opening the transaction.
  *  2. In ONE transaction: resolve the coupon, insert the order, allocate and
  *     reserve stock per line (FEFO, product-id order → consistent locks),
- *     insert the batch-level order items, consume the coupon atomically and
- *     write the first status-history row (null → PENDING).
+ *     insert the batch-level order items (with `unit_cost` = the product's
+ *     cost price at the moment of sale, the COGS snapshot used by the profit
+ *     report), consume the coupon atomically and write the first
+ *     status-history row (null → PENDING).
  *  3. After commit: invalidate the catalog cache and queue notifications and
  *     invoice generation (fire-and-forget).
  */
 import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, type DatabaseTransaction } from "../db/client";
-import { orderItems, orders, orderStatusHistory, users } from "../db/schema/tables";
+import { orderItems, orders, orderStatusHistory, products, users } from "../db/schema/tables";
 import { isUniqueViolation } from "../lib/db-errors";
 import { businessDate } from "../lib/dates";
 import { AppError } from "../lib/errors";
@@ -21,7 +23,7 @@ import { hasPermission, Permissions } from "../lib/rbac";
 import { invalidateCatalogCache } from "../middleware/cache";
 import type { ShippingAddress, UserRole } from "../types";
 import { couponService } from "./coupon.service";
-import { inventoryService } from "./inventory.service";
+import { inventoryService, type BatchAllocation } from "./inventory.service";
 import {
   customerCanCancel,
   isoOrNull,
@@ -34,6 +36,7 @@ import {
   type OrderStatusHistoryEntryDTO,
   type OrderSummaryDTO,
   type PaymentMethod,
+  type PaymentStatus,
 } from "./order-dto";
 import { publishOrderStatusEvent, requestInvoice } from "./order-events";
 import {
@@ -43,6 +46,7 @@ import {
   paisaToDecimal,
   type CartLineInput,
   type PricedCart,
+  type PricedCartLine,
 } from "./order-pricing";
 import type { OrderStatus } from "./order-state-machine";
 import { normalizeBangladeshMobile } from "./phone";
@@ -71,9 +75,15 @@ export interface AdminOrdersQuery {
   page: number;
   limit: number;
   status?: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
   q?: string;
   from?: string;
   to?: string;
+  /** Timestamp the from/to range applies to (default createdAt). */
+  dateField?: "createdAt" | "shippedAt" | "deliveredAt";
+  /** Courier provider, case-insensitive; "unknown" = no courier recorded. */
+  courier?: string;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -230,7 +240,7 @@ export class OrderService {
       throw AppError.internal("Order could not be created");
     }
 
-    const itemRows: (typeof orderItems.$inferInsert)[] = [];
+    const reserved: Array<{ line: PricedCartLine; allocations: BatchAllocation[] }> = [];
     for (const line of cart.lines) {
       const allocations = await inventoryService.allocateBatchesFEFO(line.productId, line.quantity, tx);
       const allocated = allocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
@@ -242,6 +252,29 @@ export class OrderService {
         });
       }
       await inventoryService.reserveStock(allocations, order.id, userId, tx);
+      reserved.push({ line, allocations });
+    }
+
+    // COGS snapshot. `allocateBatchesFEFO` locked every product row FOR NO KEY
+    // UPDATE in this transaction, so these are the cost prices in force at the
+    // moment of sale (a concurrent cost edit waits for our COMMIT).
+    const costRows = await tx
+      .select({ id: products.id, costPrice: products.costPrice })
+      .from(products)
+      .where(
+        inArray(
+          products.id,
+          cart.lines.map((line) => line.productId),
+        ),
+      );
+    const costByProduct = new Map(costRows.map((row) => [row.id, row.costPrice]));
+
+    const itemRows: (typeof orderItems.$inferInsert)[] = [];
+    for (const { line, allocations } of reserved) {
+      const unitCost = costByProduct.get(line.productId);
+      if (unitCost === undefined) {
+        throw AppError.internal("Product cost price could not be read during checkout");
+      }
       for (const allocation of allocations) {
         itemRows.push({
           orderId: order.id,
@@ -250,6 +283,7 @@ export class OrderService {
           quantity: allocation.quantity,
           unitPrice: paisaToDecimal(line.unitPricePaisa),
           totalPrice: paisaToDecimal(line.unitPricePaisa * allocation.quantity),
+          unitCost,
         });
       }
     }
@@ -334,11 +368,17 @@ export class OrderService {
     return { items, total: Number(totalRow?.value ?? 0) };
   }
 
-  /** Back-office order list with filters (status, free-text search, business-date range). */
+  /** Back-office order list with filters (status, payment status/method, free-text search, business-date range). */
   async listAdminOrders(query: AdminOrdersQuery): Promise<{ items: AdminOrderListItemDTO[]; total: number }> {
     const conditions: SQL[] = [];
     if (query.status) {
       conditions.push(eq(orders.status, query.status));
+    }
+    if (query.paymentStatus) {
+      conditions.push(eq(orders.paymentStatus, query.paymentStatus));
+    }
+    if (query.paymentMethod) {
+      conditions.push(eq(orders.paymentMethod, query.paymentMethod));
     }
     if (query.q) {
       const pattern = containsPattern(query.q);
@@ -357,8 +397,23 @@ export class OrderService {
         )`,
       );
     }
-    if (query.from) conditions.push(onOrAfterBusinessDay(orders.createdAt, query.from));
-    if (query.to) conditions.push(onOrBeforeBusinessDay(orders.createdAt, query.to));
+    if (query.courier) {
+      conditions.push(
+        query.courier.toLowerCase() === "unknown"
+          ? sql`${orders.courierProvider} IS NULL`
+          : sql`lower(${orders.courierProvider}) = lower(${query.courier})`,
+      );
+    }
+    // The range filters on the requested timestamp; rows where it is NULL
+    // (e.g. never shipped) never match a shippedAt / deliveredAt range.
+    const dateColumn =
+      query.dateField === "shippedAt"
+        ? orders.shippedAt
+        : query.dateField === "deliveredAt"
+          ? orders.deliveredAt
+          : orders.createdAt;
+    if (query.from) conditions.push(onOrAfterBusinessDay(dateColumn, query.from));
+    if (query.to) conditions.push(onOrBeforeBusinessDay(dateColumn, query.to));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [totalRow] = await db.select({ value: count() }).from(orders).where(where);

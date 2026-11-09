@@ -157,6 +157,8 @@
   line-height: 1.8;
   color: var(--mo-color-text);
   white-space: pre-line;
+  /* Long unbroken words or URLs wrap instead of widening the page. */
+  overflow-wrap: anywhere;
 }
 
 .specTable th {
