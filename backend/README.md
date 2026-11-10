@@ -93,7 +93,7 @@ List endpoints accept `?page=` (≥ 1, default 1) and `?limit=` (1–100, defaul
 
 - **Request ids** — every response carries `X-Request-Id`; include it when reporting errors.
 - **Caching** — selected public catalog reads are cached in memory (`X-Cache: HIT|MISS`); all other responses are uncached.
-- **Rate limiting** — `/auth/login`, `/auth/register`, `/auth/refresh`: 15 requests per minute per client IP (in-memory, per instance). The client IP comes from `X-Forwarded-For` only when `TRUST_PROXY=true`.
+- **Rate limiting** — `/auth/login`, `/auth/register`, `/auth/refresh`: 15 requests per minute per client IP (in-memory, per instance). The client IP comes from a proxy header only when `TRUST_PROXY=true`: the right-most `X-Forwarded-For` entry by default, or the header named in `CLIENT_IP_HEADER` (`x-real-ip` on Railway).
 - **CORS** — origins from `CORS_ORIGIN`; credentials allowed unless the origin list is `*` (rejected in production).
 - **Security headers** — strict CSP (`default-src 'none'`), `X-Frame-Options: DENY`, `nosniff`, HSTS, `Referrer-Policy: strict-origin-when-cross-origin`.
 - **Dates** — business dates (expiry, "today") are computed in `APP_TIMEZONE` (`Asia/Dhaka`), never the server's UTC clock.

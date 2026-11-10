@@ -8,6 +8,9 @@
  * - With TRUST_PROXY the RIGHT-most `X-Forwarded-For` entry is used: it is the
  *   address our proxy observed. Entries to its left are client-controlled when
  *   the proxy appends (`$proxy_add_x_forwarded_for`), so they are never trusted.
+ * - CLIENT_IP_HEADER picks another header instead, for edges that overwrite a
+ *   dedicated one. Railway's edge sets `X-Real-IP` to the client address, while
+ *   the right-most `X-Forwarded-For` entry there is one of its own proxy hops.
  * - Expired buckets are pruned periodically so memory stays bounded.
  *
  * Single-instance only. For horizontal scaling move the buckets to Redis.
@@ -31,6 +34,8 @@ export interface RateLimiterOptions {
   name?: string;
   /** Overrides env.TRUST_PROXY (mainly for tests). */
   trustProxy?: boolean;
+  /** Overrides env.CLIENT_IP_HEADER (mainly for tests). */
+  clientIpHeader?: string;
 }
 
 const buckets = new Map<string, Bucket>();
@@ -65,10 +70,16 @@ function proxyObservedIp(value: string | undefined): string | undefined {
 }
 
 /** Best-effort client IP. Never throws. */
-export function getClientIp(c: Context, trustProxy: boolean = env.TRUST_PROXY): string {
+export function getClientIp(
+  c: Context,
+  trustProxy: boolean = env.TRUST_PROXY,
+  clientIpHeader: string = env.CLIENT_IP_HEADER,
+): string {
   if (trustProxy) {
     const forwarded =
-      proxyObservedIp(c.req.header("x-forwarded-for")) ?? c.req.header("x-real-ip")?.trim();
+      clientIpHeader === "x-forwarded-for"
+        ? (proxyObservedIp(c.req.header("x-forwarded-for")) ?? c.req.header("x-real-ip")?.trim())
+        : c.req.header(clientIpHeader)?.split(",")[0]?.trim();
     if (forwarded) return forwarded;
   }
   try {
@@ -86,7 +97,11 @@ export function rateLimiter(options: RateLimiterOptions) {
     const now = Date.now();
     pruneExpired(now);
 
-    const ip = getClientIp(c, options.trustProxy ?? env.TRUST_PROXY);
+    const ip = getClientIp(
+      c,
+      options.trustProxy ?? env.TRUST_PROXY,
+      options.clientIpHeader ?? env.CLIENT_IP_HEADER,
+    );
     const key = `${namespace}:${ip}`;
     const bucket = buckets.get(key);
 

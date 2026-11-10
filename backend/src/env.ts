@@ -62,6 +62,19 @@ const envSchema = z
     PORT: intWithDefault(4000, 1, 65535),
     CORS_ORIGIN: z.preprocess(emptyToUndefined, z.string().trim().default("http://localhost:3000")),
     TRUST_PROXY: booleanFlag(false),
+    // Header the trusted proxy puts the client IP in (only read when
+    // TRUST_PROXY=true). "x-forwarded-for" uses its right-most entry, which
+    // suits one proxy that appends. Platforms whose edge overwrites a
+    // dedicated header name it here, e.g. "x-real-ip" on Railway.
+    CLIENT_IP_HEADER: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^[a-z0-9-]+$/, "must be an HTTP header name")
+        .default("x-forwarded-for"),
+    ),
     APP_TIMEZONE: z.preprocess(
       emptyToUndefined,
       z

@@ -5,6 +5,7 @@ How to run My Oxygen in production: configuration, database, containers, verific
 ## Contents
 
 - [Compromised credentials](#compromised-credentials) — read first
+- [Current production: Railway + Vercel](#current-production-railway--vercel)
 - [Target topology](#target-topology)
 - [Production checklist](#production-checklist)
 - [Configuration reference](#configuration-reference)
@@ -31,6 +32,57 @@ Treat every value that was ever in those files as compromised:
 4. **Dev account passwords** — the seeded passwords are public by design; see [dev accounts](#deactivate-development-accounts).
 
 Rotation is the fix; history rewriting is optional hygiene. If you also want the files gone from history (e.g. before making the repository public), rewrite it with `git filter-repo --invert-paths --path backend/.env --path frontend/.env --path frontend/.env.local`, force-push, and have every collaborator re-clone. Do this only after rotating — a rewrite cannot un-leak a value.
+
+## Current production: Railway + Vercel
+
+Production has run on Railway (API) and Vercel (website) since 10 November 2026. Both deploy automatically from `main`.
+
+| Part | Where | Settings |
+|---|---|---|
+| API | Railway, project `my-oxygen`, service `backend` (client's account), region Singapore (`asia-southeast1`) | Root directory `/backend`, built from `backend/Dockerfile`, healthcheck `/health` (120 s), restart on failure (10 retries), 1 replica, watch path `/backend/**` |
+| Website | Vercel, project `my-oxygen-web` | Root directory `frontend`, Next.js preset. `www.myoxygen.life`; `myoxygen.life` redirects to `www` |
+| Database | Supabase `trhxoqxbngqpexrhfvrh`, Singapore | The API uses the transaction pooler (`:6543`) |
+
+**Deploys.** A push to `main` rebuilds the website every time. It rebuilds the API only when something under `backend/` changed. `main` is production: never push unfinished work there.
+
+**Railway variables** (service `backend`):
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `PORT` | `4000` (the Railway domains target this port) |
+| `TRUST_PROXY` | `true` (Railway's edge proxy sits in front of the API) |
+| `CLIENT_IP_HEADER` | `x-real-ip`. Railway's edge overwrites `X-Real-IP` with the client address. The right-most `X-Forwarded-For` entry there is one of Railway's own proxy hops: with the default the login rate limit never triggered. |
+| `APP_TIMEZONE` | `Asia/Dhaka` |
+| `CORS_ORIGIN` | `https://www.myoxygen.life,https://myoxygen.life,https://my-oxygen-web.vercel.app` |
+| `FRONTEND_URL` | `https://www.myoxygen.life` |
+| `DATABASE_URL` | Supabase transaction pooler URL (secret) |
+| `JWT_SECRET` | 88 random characters, generated for production only (secret) |
+
+Not set yet:
+- `REDIS_URL`: not safe to set yet, see [Redis](#redis-and-background-jobs).
+- `DIRECT_URL`: only migrations need it.
+- Courier, SMS and email keys: add them when the client provides them.
+
+**Vercel variables:** `NEXT_PUBLIC_API_URL` (Production and Preview) is the API origin. Next.js inlines it at build time, so redeploy after changing it.
+
+**Migrations.** The runtime image does not include drizzle-kit. Before pushing code that needs a new migration, run it from a development machine (`cd backend && bun run db:migrate`, with `DIRECT_URL` pointing at production).
+
+**Custom API domain `api.myoxygen.life`.** The domain is created on Railway but still needs two DNS records. The `myoxygen.life` DNS is hosted by Vercel, so add them under Vercel → Domains → `myoxygen.life`:
+
+| Type | Name | Value |
+|---|---|---|
+| `CNAME` | `api` | `9vdbpqn3.up.railway.app` |
+| `TXT` | `_railway-verify.api` | the `railway-verify=…` token shown in Railway → `backend` → Settings → Networking |
+
+Once Railway shows the domain as verified with a certificate, set `NEXT_PUBLIC_API_URL=https://api.myoxygen.life` on Vercel and redeploy. Until then the website uses `https://backend-production-f0954.up.railway.app`.
+
+**Known gotchas**
+- Railway rejects BuildKit cache mounts whose id lacks its service id ("Cache mount ID is not prefixed with cache key"), so the Dockerfile uses none.
+- With Railway CLI 5.71, `railway environment edit --service-config …` reported "No changes to apply" for service settings. Use the dashboard or the GraphQL `serviceInstanceUpdate` mutation instead.
+- Railway's builder setting shows `RAILPACK`, but Railway builds with the `Dockerfile` it finds in the root directory.
+- Vercel preview deployments are not in `CORS_ORIGIN`, so their API calls fail. Production is unaffected.
+- **Plans:** the Railway account is on the trial plan. Upgrade it to a paid plan before the trial ends, or the API stops. The Vercel team is on Hobby, which Vercel limits to non-commercial use, so a live store needs Pro.
 
 ## Target topology
 
@@ -135,7 +187,11 @@ If the super admin is still `admin@myoxygen.com` with the documented password, e
 
 ## Redis and background jobs
 
-- With `REDIS_URL` set, order notifications, invoice generation and the daily inventory digest run on a **BullMQ** queue (worker inside the API process, retries with exponential backoff). Without it the API falls back to an **in-process** queue with the same retry policy, which loses pending jobs on restart: always set `REDIS_URL` in production. The nightly expiry scan runs on node-cron at 02:00 `APP_TIMEZONE`.
+- With `REDIS_URL` set, order notifications, invoice generation and the daily inventory digest run on a **BullMQ** queue (worker inside the API process, retries with exponential backoff). Without it the API falls back to an **in-process** queue with the same retry policy, which loses pending jobs on restart. The nightly expiry scan runs on node-cron at 02:00 `APP_TIMEZONE`.
+- ⚠️ **Do not set `REDIS_URL` yet.** BullMQ 6 does not bundle a Redis client, and `ioredis` is not installed. With `REDIS_URL` set, BullMQ throws "could not load the optional 'ioredis' package" and no job runs. To enable Redis:
+  1. Run `bun add ioredis`.
+  2. On Railway, append `?family=0` to the private Redis URL (`*.railway.internal` can resolve to IPv6 only).
+  3. Test against a real Redis: place an order, then check that the invoice and notifications run.
 - Compose already provides `redis:7-alpine` with AOF persistence and `maxmemory-policy noeviction` (required by BullMQ: evicted keys mean lost jobs).
 - Managed Redis: use `rediss://` (TLS) with a password, private networking only.
 - **Run a single backend instance** until the in-memory pieces move to Redis: the rate limiter, the response cache and the cron scheduler are per-process, so N replicas give N× the auth rate limit and run the nightly job N times.
@@ -144,6 +200,8 @@ If the super admin is still `admin@myoxygen.com` with the documented password, e
 ## Reverse proxy and TRUST_PROXY
 
 The rate limiter keys on the client IP. With `TRUST_PROXY=true` it takes the **right-most** `X-Forwarded-For` entry (falling back to `X-Real-IP`): the address your proxy observed. Entries to its left come from the client and are ignored, so the setup is safe whether the proxy overwrites the header (`$remote_addr`, shown below) or appends to it (`$proxy_add_x_forwarded_for`). This assumes exactly **one** trusted proxy in front of the API. Without a proxy, keep `TRUST_PROXY=false`.
+
+Platforms whose edge overwrites a dedicated header instead: set `CLIENT_IP_HEADER` to that header and the limiter reads only it. On **Railway** use `CLIENT_IP_HEADER=x-real-ip`. With the default, 34 failed logins in two minutes were never limited, because the right-most `X-Forwarded-For` entry is one of Railway's own proxy hops. After a change, check from outside that the 16th failed login within a minute returns `429`, with and without a spoofed `X-Forwarded-For`.
 
 Nginx example:
 

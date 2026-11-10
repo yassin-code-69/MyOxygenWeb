@@ -13,7 +13,7 @@ For what is still missing or broken, see [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
 | Backend API endpoints | 72 |
 | Database tables | 11 (plus 7 enum types) |
 | Database migrations | 6 (`0000`–`0005`), all applied to Supabase |
-| Backend automated tests | 352 passing, in 28 test files |
+| Backend automated tests | 353 passing, in 28 test files |
 | Frontend pages | 34 (11 storefront, 23 admin) |
 | Frontend React components | 163 |
 | Data hooks | 40 |
@@ -185,7 +185,7 @@ The panel follows the client's three mockups (`docs/design/admin/`) in the My Ox
 
 | Check | Command | State |
 |---|---|---|
-| Backend tests (auth, catalog, orders, inventory, courier, invoices, notifications, queue, reports, every admin route, rate limiter, env) | `cd backend && bun run test` | 352 passing |
+| Backend tests (auth, catalog, orders, inventory, courier, invoices, notifications, queue, reports, every admin route, rate limiter, env) | `cd backend && bun run test` | 353 passing |
 | Backend type check | `bun run typecheck` | Clean |
 | Migration drift check | `bun run db:check` | Clean |
 | Frontend type check | `cd frontend && bun run typecheck` | Clean |
@@ -196,6 +196,7 @@ Tests run against a separate local Postgres in Docker (`bun run test:db:up`, por
 
 ## 10. DevOps and deployment
 
+- **Production:** the API runs on Railway (Singapore) and the website on Vercel at `www.myoxygen.life`; both deploy from `main`. See [`DEPLOYMENT.md`](DEPLOYMENT.md#current-production-railway--vercel).
 - **Docker:** `backend/Dockerfile`, `frontend/Dockerfile` (standalone Next.js output), and `docker-compose.yml` with `redis`, `migrate`, `backend`, `frontend` and `test-db` services.
 - **CI** (`.github/workflows/ci.yml`): the backend job runs the type check, migration check, drift check, migrations and tests; the frontend job runs the type check, lint and build; a third job builds the Docker images.
 - **Deployment guide:** [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) covers environment variables, migrations, first owner account and the go-live checklist.

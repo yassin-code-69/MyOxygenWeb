@@ -225,7 +225,8 @@ Validated at startup by [`backend/src/env.ts`](backend/src/env.ts): the API refu
 | `NODE_ENV` | no | `production` | `development` \| `production` \| `test`. Unset means production (fails closed); set `development` in your local `backend/.env`. Production enables the stricter checks below. |
 | `PORT` | no | `4000` | HTTP port (1–65535). |
 | `CORS_ORIGIN` | no | `http://localhost:3000` | Comma-separated allowed browser origins. `*` is rejected in production. |
-| `TRUST_PROXY` | no | `false` | Read the client IP from `X-Forwarded-For` (rate limiting). Enable **only** behind a reverse proxy that sets it. |
+| `TRUST_PROXY` | no | `false` | Read the client IP from a proxy header (rate limiting). Enable **only** behind a reverse proxy that sets it. |
+| `CLIENT_IP_HEADER` | no | `x-forwarded-for` | Header to read when `TRUST_PROXY=true`. `x-forwarded-for` uses its right-most entry; set `x-real-ip` on Railway. |
 | `APP_TIMEZONE` | no | `Asia/Dhaka` | IANA zone for business dates (expiry checks, nightly jobs). |
 | `FRONTEND_URL` | no | — | Public storefront URL used in emails / links. |
 | `DATABASE_URL` | **yes** | — | Postgres URL for the API. Supabase transaction pooler, port `6543`. |
@@ -288,7 +289,7 @@ Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) proposes weekly 
 - Credentials of the **previous** Supabase project were committed to git history and must be treated as compromised (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#compromised-credentials)).
 - The seeded dev accounts use public passwords: deactivate or rotate them before production, and seed production only with `SEED_ADMIN_*`.
 - `JWT_SECRET` must be ≥ 64 random characters in production; rotating it signs everyone out.
-- Set `TRUST_PROXY=true` **only** when exactly one reverse proxy sits in front of the API. The limiter then uses the right-most `X-Forwarded-For` entry (the address the proxy saw), so client-supplied entries can't bypass it. Without a proxy, keep it `false`.
+- Set `TRUST_PROXY=true` **only** when exactly one reverse proxy sits in front of the API. The limiter then uses the right-most `X-Forwarded-For` entry (the address the proxy saw), so client-supplied entries can't bypass it. On Railway also set `CLIENT_IP_HEADER=x-real-ip`: there the right-most entry is one of Railway's own proxy hops. Without a proxy, keep it `false`.
 - `CORS_ORIGIN` must list exact origins in production (`*` is rejected).
 - RLS is enabled on all tables without policies; any new table must also `ENABLE ROW LEVEL SECURITY` in its migration.
 - Unknown errors return a generic `INTERNAL_ERROR`; internal messages are only exposed when `NODE_ENV=development`.

@@ -1,6 +1,6 @@
 # My Oxygen — Open Issues
 
-Status as of **9 November 2026**. Everything below is still open. Items are grouped by when they need to be done; each says what is wrong, why it matters and how to fix it.
+Status as of **10 November 2026**. The API runs on Railway and the website on Vercel ([setup](DEPLOYMENT.md#current-production-railway--vercel)). Everything below is still open. Items are grouped by when they need to be done; each says what is wrong, why it matters and how to fix it.
 
 - 🔴 **Before going live**: blocks a public launch.
 - 🟠 **Soon after launch**: important, but the store can run without it for a short time.
@@ -21,9 +21,9 @@ For what already exists in the project, see [`PROJECT_INVENTORY.md`](PROJECT_INV
 | 5 | **The old Supabase project is compromised.** Its password and JWT secret were committed to git (`adwxwwcnxpcuwkjheqaj`, Tokyo) and stay in the git history. | Anyone with the repository history can connect to it. | Delete or pause the old project. Optionally rewrite the git history. |
 | 6 | **One database is used for both development and production.** The local dev server (`bun run dev` on port 4000) runs directly against the Supabase database. | Experiments and test data land in real data, and every schema change hits production immediately. | Create a separate Supabase project (or branch) for development and point the local `.env` at it. Keep production for the live site only. |
 | 7 | **Courier, SMS and email are in mock mode.** No Steadfast, SSL Wireless or Resend keys are configured. | Orders cannot be booked with the courier, and customers get no SMS or email (the logs say "skipped"). | Add the keys in production (`STEADFAST_*`, `SSL_WIRELESS_*`, `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_ALERT_EMAIL`) and set `COURIER_PROVIDER=steadfast`. Confirm the Steadfast base URL (it may now be `portal.packzy.com`). |
-| 8 | **No Redis in production.** Without `REDIS_URL`, background jobs (notifications, invoice PDFs, daily digest) run in memory. | Jobs waiting in the queue are lost whenever the server restarts. | Run Redis (docker-compose already includes it) and set `REDIS_URL`. The BullMQ path has not been tested against a real Redis yet; test it once. |
+| 8 | **No Redis in production, and the Redis path is broken.** Without `REDIS_URL`, background jobs (notifications, invoice PDFs, daily digest) run in memory. BullMQ 6 needs the `ioredis` package, which is not installed, so setting `REDIS_URL` today stops every job. | Jobs waiting in the queue are lost whenever the server restarts. | Run `bun add ioredis`, add a Redis service on Railway, set `REDIS_URL` (append `?family=0` for the private URL), then test with a real order. |
 | 9 | **Demo data in the live database.** It has 22 demo products, demo flash sales and coupons. Three products have broken images (Mustela Baby Skincare Set, Aveeno Baby Wash, Organic Soothing Nipple Balm). Some images don't match their product (for example a pillow on the support band). | Customers would see demo products and broken pictures. | Replace them with the real catalog through the admin panel. To keep the demo, fix the 3 images in Admin → Products → Edit. |
-| 10 | **Recent work is not committed yet.** The admin redesign, the long-text drawer fix and the button-loader fix exist only on this computer. | They can be lost, and the team cannot see them. | Commit and push to `main`. |
+| 10 | **Hosting plans and the API domain are not final.** The Railway account is on the trial plan. The Vercel team is on Hobby, which Vercel limits to non-commercial use. `api.myoxygen.life` is created on Railway but has no DNS records yet, so the website uses `backend-production-f0954.up.railway.app`. | When the trial ends the API stops, and the whole store with it. | Upgrade Railway to a paid plan and Vercel to Pro. Add the two DNS records from `DEPLOYMENT.md`, then point `NEXT_PUBLIC_API_URL` at `https://api.myoxygen.life`. |
 
 ## 🟠 Soon after launch
 
@@ -49,7 +49,7 @@ For what already exists in the project, see [`PROJECT_INVENTORY.md`](PROJECT_INV
 
 | # | Issue | Fix |
 |---|---|---|
-| 19 | **Docker images were never built** (no Docker on the development machine), and **CI status is unknown** (the GitHub CLI is not signed in). | Check the GitHub Actions run for `c13fcda`, build the images once, and fix anything that breaks (risks: the Bun binary on Alpine, and `next/font` needing internet during the build). |
+| 19 | **CI status is unknown** (the GitHub CLI is not signed in). The backend Docker image now builds on Railway; the frontend image has never been built, because Vercel does not use it. | Check the GitHub Actions runs on `main`. Build the frontend image once if Docker hosting is ever needed (risk: `next/font` needs internet during the build). |
 | 20 | **No monitoring, staging or backup plan.** | Add error tracking (for example Sentry), a staging environment, and Supabase backups or PITR (point-in-time recovery). |
 | 21 | **SEO gaps.** Product and category pages render in the browser, so unknown links return HTTP 200 (a "soft 404"). Page titles come from the URL slug, not the real product name. | Render product and category pages on the server, with real `notFound()` handling and titles from the API. |
 | 22 | **Invoices cannot show Bangla text.** The PDF's built-in fonts drop Bangla characters and print "BDT" instead of ৳. | Embed a Unicode font (for example Noto Sans Bengali) in the PDF generator. |

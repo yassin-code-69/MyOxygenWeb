@@ -47,6 +47,24 @@ describe("rateLimiter", () => {
     expect(body.error.code).toBe("RATE_LIMITED");
   });
 
+  it("keys on a dedicated header when CLIENT_IP_HEADER names one (Railway's X-Real-IP)", async () => {
+    const app = new Hono();
+    app.onError(errorHandler);
+    app.use(
+      "/limited",
+      rateLimiter({ name: "test-real-ip", maxRequests: 2, windowMs: 60_000, trustProxy: true, clientIpHeader: "x-real-ip" }),
+    );
+    app.get("/limited", (c) => c.text("ok"));
+    // The right-most X-Forwarded-For entry is a changing proxy hop; it must not reset the budget.
+    const viaEdge = (realIp: string, hop: string) =>
+      app.request("/limited", { headers: { "x-real-ip": realIp, "x-forwarded-for": `${realIp}, ${hop}` } });
+    expect((await viaEdge("8.8.8.8", "100.64.0.1")).status).toBe(200);
+    expect((await viaEdge("8.8.8.8", "100.64.0.2")).status).toBe(200);
+    expect((await viaEdge("8.8.8.8", "100.64.0.3")).status).toBe(429);
+    // Another client has its own budget.
+    expect((await viaEdge("9.9.9.9", "100.64.0.1")).status).toBe(200);
+  });
+
   it("starts a new window once the previous one expires", async () => {
     const app = buildApp(true, 50);
     expect((await hit(app, "4.4.4.4")).status).toBe(200);
