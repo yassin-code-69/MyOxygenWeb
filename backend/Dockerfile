@@ -27,8 +27,10 @@ WORKDIR /app
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json bun.lock ./
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile
+# No BuildKit cache mounts: Railway rejects cache mounts whose id is not
+# prefixed with its service id ("Cache mount ID is not prefixed with cache
+# key"), and a hard-coded service id would break every other builder.
+RUN bun install --frozen-lockfile
 
 # -----------------------------------------------------------------------------
 FROM deps AS typecheck
@@ -52,8 +54,7 @@ CMD ["bun", "run", "db:migrate"]
 # -----------------------------------------------------------------------------
 FROM base AS prod-deps
 COPY package.json bun.lock ./
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production
 
 # -----------------------------------------------------------------------------
 FROM base AS runtime
