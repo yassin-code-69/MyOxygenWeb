@@ -35,6 +35,28 @@ export interface CatalogActiveDiscount {
   countdownMs: number;
 }
 
+/** Item of `GET /catalog/search/suggestions`: a lean product for the search dropdown. */
+export interface ProductSuggestionDTO {
+  id: string;
+  slug: string;
+  title: string;
+  brand: string | null;
+  /** First product image, or null. */
+  image: string | null;
+  category: CatalogCategoryRef;
+  basePrice: number;
+  effectivePrice: number;
+  discountPercent: number;
+  isOutOfStock: boolean;
+}
+
+/** `GET /catalog/search/suggestions` response data. */
+export interface ProductSuggestionsDTO {
+  items: ProductSuggestionDTO[];
+  /** Every active product matching the term. */
+  total: number;
+}
+
 /** `CatalogProductDTO` — item of `GET /catalog/products`. No rating fields and no cost price exist. */
 export interface CatalogProductDTO {
   id: string;

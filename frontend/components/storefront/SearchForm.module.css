@@ -1,0 +1,76 @@
+/* Search-as-you-type dropdown (SearchForm). */
+
+.dropdown {
+  padding: 6px;
+  border: 1px solid var(--mo-color-border-subtle);
+  overflow: hidden;
+}
+
+.option {
+  padding: 8px;
+  border-radius: var(--mo-radius-sm);
+}
+
+/* Keyboard selection: brand tint instead of Mantine's filled primary, so the
+   pink price and muted meta text stay readable. */
+.option[data-combobox-selected] {
+  background-color: var(--mo-color-surface-brand-tint);
+  color: inherit;
+}
+
+.thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--mo-color-border-subtle);
+  border-radius: var(--mo-radius-sm);
+  background-color: var(--mo-color-surface);
+}
+
+.thumbImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.priceColumn {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  font-size: 0.875rem;
+  color: var(--mo-color-text-muted);
+}
+
+.seeAll {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: var(--mo-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--mo-color-text-brand);
+  overflow-wrap: anywhere;
+}
+
+.seeAll:hover {
+  background-color: var(--mo-color-surface-brand-tint);
+}

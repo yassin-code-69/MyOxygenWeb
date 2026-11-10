@@ -10,10 +10,10 @@ For what is still missing or broken, see [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
 
 | Item | Count |
 |---|---|
-| Backend API endpoints | 72 |
+| Backend API endpoints | 73 |
 | Database tables | 11 (plus 7 enum types) |
 | Database migrations | 6 (`0000`–`0005`), all applied to Supabase |
-| Backend automated tests | 353 passing, in 28 test files |
+| Backend automated tests | 357 passing, in 28 test files |
 | Frontend pages | 34 (11 storefront, 23 admin) |
 | Frontend React components | 163 |
 | Data hooks | 40 |
@@ -84,7 +84,7 @@ my_oxygen/
 
 **Seed data.** `bun run db:seed` creates the categories, the owner account and the development staff accounts. With `SEED_DEMO_CATALOG` it also adds 22 demo products, flash sales and coupons. `db:seed:demo-history` adds months of fake orders, but only on a local database.
 
-## 4. Backend API (72 endpoints)
+## 4. Backend API (73 endpoints)
 
 Full details: [`docs/API_CONTRACT.md`](API_CONTRACT.md) and [`backend/README.md`](../backend/README.md).
 
@@ -92,7 +92,7 @@ Full details: [`docs/API_CONTRACT.md`](API_CONTRACT.md) and [`backend/README.md`
 |---|---|
 | **Health** | `GET /health`: deep database check |
 | **Auth** | `POST /auth/register`, `/auth/login`, `/auth/refresh`; `GET /auth/me`. Rate limited to 15/min per IP |
-| **Public catalog** | Categories (cached 5 min), product search with filters, sort and facets, product detail with related products, running flash sales (cached 30 s) |
+| **Public catalog** | Categories (cached 5 min), product search with filters, sort and facets, search-as-you-type suggestions, product detail with related products, running flash sales (cached 30 s) |
 | **Customer orders** | Checkout, coupon check, my orders, order detail, invoice PDF, cancel while pending, tracking |
 | **Admin: catalog** | Products (list, detail, create, edit, soft delete), categories, brands |
 | **Admin: discounts** | Coupons and flash sales (create, edit, deactivate) |
@@ -152,7 +152,7 @@ Full details: [`docs/API_CONTRACT.md`](API_CONTRACT.md) and [`backend/README.md`
 | `/login`, `/register` | Sign in by email or phone, password strength meter |
 | `/account` | Profile and account menu |
 
-**Shared pieces:** navbar with search, cart drawer, mobile header and bottom navigation, footer, page progress bar, page transitions, skeleton loaders, empty states, a custom 404 page and a skip-to-content link. Images fall back gracefully when they fail to load. A one-click demo admin login button appears in development builds only.
+**Shared pieces:** navbar search with live product suggestions (typo tolerant, keyboard friendly), cart drawer, mobile header and bottom navigation, footer, page progress bar, page transitions, skeleton loaders, empty states, a custom 404 page and a skip-to-content link. Images fall back gracefully when they fail to load. A one-click demo admin login button appears in development builds only.
 
 ## 7. Admin panel (23 pages)
 
@@ -185,7 +185,7 @@ The panel follows the client's three mockups (`docs/design/admin/`) in the My Ox
 
 | Check | Command | State |
 |---|---|---|
-| Backend tests (auth, catalog, orders, inventory, courier, invoices, notifications, queue, reports, every admin route, rate limiter, env) | `cd backend && bun run test` | 353 passing |
+| Backend tests (auth, catalog, orders, inventory, courier, invoices, notifications, queue, reports, every admin route, rate limiter, env) | `cd backend && bun run test` | 357 passing |
 | Backend type check | `bun run typecheck` | Clean |
 | Migration drift check | `bun run db:check` | Clean |
 | Frontend type check | `cd frontend && bun run typecheck` | Clean |
