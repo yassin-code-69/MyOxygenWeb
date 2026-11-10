@@ -71,6 +71,27 @@ export interface CatalogProductDTO {
   createdAt: string;
 }
 
+/** Lean item of `GET /catalog/search/suggestions` (search as you type). */
+export interface ProductSuggestionDTO {
+  id: string;
+  slug: string;
+  title: string;
+  brand: string | null;
+  /** First product image, or null. */
+  image: string | null;
+  category: CategoryRefDTO;
+  basePrice: number;
+  effectivePrice: number;
+  discountPercent: number;
+  isOutOfStock: boolean;
+}
+
+export interface ProductSuggestionsDTO {
+  items: ProductSuggestionDTO[];
+  /** Every active product matching the term (for "See all N results"). */
+  total: number;
+}
+
 export interface BatchSummaryDTO {
   batchNumber: string;
   expiryDate: string;
@@ -565,6 +586,46 @@ export class CatalogService {
         items: rows.map((row) => toCatalogProductDto(row, now)),
         total: Number(totals[0]?.total ?? 0),
         facets,
+      };
+    });
+  }
+
+  /**
+   * Search-as-you-type: the best `limit` active products for `q`, ranked
+   * and typo tolerant exactly like `listProducts` with `sort=relevance`.
+   * The payload is lean (no description, batches or facets) because it runs
+   * on every pause in typing.
+   */
+  async suggestProducts(q: string, limit: number, db: DbExecutor = defaultDb): Promise<ProductSuggestionsDTO> {
+    const search = searchSpec(q);
+    if (!search) return { items: [], total: 0 };
+    const today = todayInBusinessTz();
+    const where = buildWhere({ visibility: "public", today, search });
+
+    return withSearchSettings(db, search, async (exec) => {
+      const [rows, totals] = await queryAll(
+        exec,
+        () => selectPricedProducts(exec, today).where(where).orderBy(...publicOrderBy("relevance", search)).limit(limit),
+        () => countPricedProducts(exec, where),
+      );
+      const now = new Date();
+      return {
+        items: rows.map((row) => {
+          const product = toCatalogProductDto(row, now);
+          return {
+            id: product.id,
+            slug: product.slug,
+            title: product.title,
+            brand: product.brand,
+            image: product.images[0] ?? null,
+            category: product.category,
+            basePrice: product.basePrice,
+            effectivePrice: product.effectivePrice,
+            discountPercent: product.discountPercent,
+            isOutOfStock: product.isOutOfStock,
+          };
+        }),
+        total: Number(totals[0]?.total ?? 0),
       };
     });
   }

@@ -175,6 +175,12 @@ export const catalogListQuerySchema = z
     sort: data.sort,
   }));
 
+/** Search as you type: a short ranked list for the navbar search dropdown. */
+export const catalogSuggestQuerySchema = z.object({
+  q: z.string().trim().min(2, "q must have at least 2 characters").max(100),
+  limit: z.coerce.number().int().min(1).max(10).default(6),
+});
+
 export const productIdOrSlugParam = z.object({
   idOrSlug: z
     .string()

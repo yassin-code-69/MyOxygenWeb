@@ -26,6 +26,7 @@ import type {
   CatalogProductDTO,
   CategoryDTO,
   FlashSaleDTO,
+  ProductSuggestionsDTO,
 } from "./catalog.service";
 import type { DiscountDTO } from "./discount.service";
 import { flashSaleService, type Discount } from "./flash-sale.service";
@@ -399,6 +400,61 @@ describe("GET /catalog/products", () => {
     // Relevance ranking puts the title match first.
     const ranked = await api<CatalogProductDTO[]>("GET", `/catalog/products?q=${encodeURIComponent(`Calmora Glow Serum ${tag}`)}`);
     expect(ranked.body.data[0]?.id).toBe(p2.id);
+  });
+});
+
+describe("GET /catalog/search/suggestions", () => {
+  const suggest = (q: string, limit?: number) =>
+    api<ProductSuggestionsDTO>(
+      "GET",
+      `/catalog/search/suggestions?q=${encodeURIComponent(q)}${limit === undefined ? "" : `&limit=${limit}`}`,
+    );
+
+  it("returns lean, priced, relevance-ranked items with the total match count", async () => {
+    const res = await suggest(`Velvetine Baby Lotion ${tag}`);
+    expect(res.status).toBe(200);
+    const first = res.body.data.items[0];
+    expect(first).toMatchObject({
+      id: p1.id,
+      slug: p1.slug,
+      title: p1.title,
+      brand: brandA,
+      category: { id: c1.id, slug: c1.slug },
+      basePrice: 1000,
+      effectivePrice: 800,
+      discountPercent: 20,
+      isOutOfStock: false,
+    });
+    expect(first && "image" in first).toBe(true);
+    // Lean payload: none of the heavy listing fields.
+    expect(first && "description" in first).toBe(false);
+    expect(first && "activeDiscount" in first).toBe(false);
+    expect(res.body.data.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it("is typo tolerant, hides inactive products and keeps out-of-stock ones flagged", async () => {
+    expect((await suggest("Velvetin")).body.data.items[0]?.id).toBe(p1.id);
+
+    const all = (await suggest(tag, 10)).body.data;
+    const ids = all.items.map((item) => item.id);
+    expect(ids).not.toContain(p3.id); // inactive
+    expect(ids).toEqual(expect.arrayContaining([p1.id, p2.id, p4.id, p5.id, p6.id, p7.id]));
+    expect(all.items.find((item) => item.id === p6.id)?.isOutOfStock).toBe(true);
+    expect(all.total).toBeGreaterThanOrEqual(6);
+  });
+
+  it("caps the list at limit while still counting every match", async () => {
+    const res = (await suggest(tag, 2)).body.data;
+    expect(res.items).toHaveLength(2);
+    expect(res.total).toBeGreaterThanOrEqual(6);
+  });
+
+  it("validates q and limit", async () => {
+    expect((await suggest("a")).status).toBe(422);
+    expect((await suggest("   ")).status).toBe(422);
+    expect((await suggest("lotion", 11)).status).toBe(422);
+    expect((await suggest("lotion", 0)).status).toBe(422);
+    expect((await suggest("%%")).body.data).toEqual({ items: [], total: 0 });
   });
 });
 

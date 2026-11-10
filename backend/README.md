@@ -199,6 +199,7 @@ bun run test:db:down
 | GET | `/catalog/categories` | Cached 300 s, ordered by `sort_order` |
 | GET | `/catalog/products` | Search (`pg_trgm`), category/brand/price/stock filters on effective price, sort, facets, pagination |
 | GET | `/catalog/products/:idOrSlug` | Detail + FEFO batch summary + related products |
+| GET | `/catalog/search/suggestions` | Search as you type: `q` (2–100 chars), `limit` (≤10, default 6). Lean ranked items + total; cached 60 s |
 | GET | `/catalog/flash-sales` | Cached 30 s, running automatic flash sales |
 
 **Catalog & discount administration**

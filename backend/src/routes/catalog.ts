@@ -5,6 +5,7 @@
  *   GET    /catalog/categories
  *   GET    /catalog/products                 list + facets (`includeInactive` needs PRODUCTS_READ)
  *   GET    /catalog/products/:idOrSlug
+ *   GET    /catalog/search/suggestions       search as you type (lean, ranked, top 1–10)
  *   GET    /catalog/flash-sales
  * Admin products (PRODUCTS_READ / PRODUCTS_WRITE) — responses carry `costBreakdown`
  * (cost_price = its sum; see product.service.ts):
@@ -37,6 +38,7 @@ import type { ApiSuccess, PaginationMeta } from "../types";
 import {
   adminProductListQuerySchema,
   catalogListQuerySchema,
+  catalogSuggestQuerySchema,
   createDiscountSchema,
   createProductSchema,
   discountListQuerySchema,
@@ -98,6 +100,16 @@ catalog.get(
     const query = c.req.valid("query");
     const { items, total, facets } = await catalogService.listProducts(query);
     return paginatedWithFacets(c, items, { page: query.page, limit: query.limit, total }, facets);
+  },
+);
+
+catalog.get(
+  "/catalog/search/suggestions",
+  cacheMiddleware(60),
+  validate("query", catalogSuggestQuerySchema),
+  async (c) => {
+    const { q, limit } = c.req.valid("query");
+    return ok(c, await catalogService.suggestProducts(q, limit));
   },
 );
 
