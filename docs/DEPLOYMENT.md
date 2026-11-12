@@ -68,14 +68,21 @@ Not set yet:
 
 **Migrations.** The runtime image does not include drizzle-kit. Before pushing code that needs a new migration, run it from a development machine (`cd backend && bun run db:migrate`, with `DIRECT_URL` pointing at production).
 
-**Custom API domain `api.myoxygen.life`.** The domain is created on Railway but still needs two DNS records. The `myoxygen.life` DNS is hosted by Vercel, so add them under Vercel → Domains → `myoxygen.life`:
+**API domain `api.myoxygen.life`** (live since 13 November 2026). The website calls `https://api.myoxygen.life`. The `myoxygen.life` DNS is hosted by Vercel and has two records for it:
 
 | Type | Name | Value |
 |---|---|---|
-| `CNAME` | `api` | `9vdbpqn3.up.railway.app` |
+| `CNAME` | `api` | `9vdbpqn3.up.railway.app` (Railway's target for this domain) |
 | `TXT` | `_railway-verify.api` | the `railway-verify=…` token shown in Railway → `backend` → Settings → Networking |
 
-Once Railway shows the domain as verified with a certificate, set `NEXT_PUBLIC_API_URL=https://api.myoxygen.life` on Vercel and redeploy. Until then the website uses `https://backend-production-f0954.up.railway.app`.
+Railway issues and renews the Let's Encrypt certificate. The domain's CAA records already allow `letsencrypt.org`. Keep both DNS records: deleting the TXT record can stop renewals. The Railway URL `https://backend-production-f0954.up.railway.app` still works, but do not use it in the website (see Russia below).
+
+**Visitors in Russia.** Tested on 13 November 2026 from two check-host.net servers in Moscow (data centres, not home or mobile networks):
+- The website on Vercel loads normally.
+- The Railway URL (`backend-production-f0954.up.railway.app`, IP `153.52.255.67`) times out: TCP connects, then the HTTPS request hangs.
+- `api.myoxygen.life` (Railway target IP `153.52.255.66`) answered every test in 0.3–0.8 s.
+
+Russian filtering changes often. Re-test from Russian nodes after changing domains or hosting, and if Russian visitors report problems: `https://check-host.net/check-http?host=https://api.myoxygen.life/health`. If the API domain is blocked one day, the fallback is to proxy the API through the website's own domain (`www.myoxygen.life/api/…`). That proxy must pass the real client IP to the rate limiter.
 
 **Known gotchas**
 - Railway rejects BuildKit cache mounts whose id lacks its service id ("Cache mount ID is not prefixed with cache key"), so the Dockerfile uses none.
