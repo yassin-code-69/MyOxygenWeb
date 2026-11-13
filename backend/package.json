@@ -20,16 +20,16 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
-    "@hono/zod-validator": "^0.4.3",
+    "@hono/zod-validator": "^0.9.1",
     "bcryptjs": "^3.0.2",
     "bullmq": "^6.7.2",
-    "drizzle-orm": "^0.39.3",
-    "drizzle-zod": "^0.7.0",
-    "hono": "^4.7.2",
+    "drizzle-orm": "^0.45.4",
+    "drizzle-zod": "^0.8.3",
+    "hono": "^4.13.16",
     "jose": "^5.9.6",
     "node-cron": "^3.0.3",
     "pdf-lib": "^1.17.1",
-    "pg": "^8.13.3",
+    "pg": "^8.23.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -37,7 +37,7 @@
     "@types/bun": "latest",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.11",
-    "drizzle-kit": "^0.30.4",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.7.3"
   }
 }
